@@ -1,0 +1,8 @@
+.git
+.idea
+data
+*.db
+.env
+config.yaml
+docker-compose.yml
+scripts
