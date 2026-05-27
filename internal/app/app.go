@@ -32,6 +32,12 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		st.Close()
 		return nil, err
 	}
+	if err := publisher.ValidateAccess(); err != nil {
+		st.Close()
+		return nil, err
+	}
+
+	log.Info("destination channel ok", zap.String("channel", publisher.Destination()))
 
 	tmpDir := filepath.Join(cfg.App.DataDir, "tmp")
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
@@ -193,7 +199,8 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 		destID, err := a.publishPost(ctx, post)
 		if err != nil {
 			a.log.Warn("publish failed",
-				zap.String("channel", source),
+				zap.String("source", source),
+				zap.String("destination", a.publisher.Destination()),
 				zap.Int("message_id", post.MessageID),
 				zap.Error(err),
 			)

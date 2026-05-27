@@ -40,6 +40,21 @@ func NewPublisher(token, destination string) (*Publisher, error) {
 	return p, nil
 }
 
+func (p *Publisher) Destination() string {
+	if p.destChat.ChannelUsername != "" {
+		return "@" + p.destChat.ChannelUsername
+	}
+	return fmt.Sprintf("%d", p.destChat.ChatID)
+}
+
+func (p *Publisher) ValidateAccess() error {
+	_, err := p.bot.GetChat(tgbotapi.ChatInfoConfig{BaseChat: p.destChat})
+	if err != nil {
+		return fmt.Errorf("bot cannot access destination %s: %w (add bot as channel admin with post permission)", p.Destination(), err)
+	}
+	return nil
+}
+
 func (p *Publisher) Publish(post Post, mediaPath string) (int, error) {
 	if post.HasMedia && mediaPath != "" {
 		return p.sendMedia(post, mediaPath)
