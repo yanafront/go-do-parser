@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -46,16 +45,21 @@ func (r *Reader) Connect(ctx context.Context, ready chan<- struct{}) error {
 	sessionPath := filepath.Join(r.dataDir, "session.json")
 	sessionStorage := &session.FileStorage{Path: sessionPath}
 
+	if !sessionExists(sessionPath) {
+		r.log.Info("telegram session not found, login required",
+			zap.String("hint", "set TG_AUTH_CODE in Railway Variables and redeploy"),
+		)
+	}
+
 	r.client = telegram.NewClient(r.apiID, r.apiHash, telegram.Options{
 		SessionStorage: sessionStorage,
 	})
 
 	return r.client.Run(ctx, func(ctx context.Context) error {
-		password := strings.TrimSpace(os.Getenv("TG_AUTH_PASSWORD"))
-		userAuth := auth.Constant(
+		userAuth := newEnvAuthenticator(
 			r.phone,
-			password,
-			auth.CodeAuthenticatorFunc(authCodePrompt),
+			strings.TrimSpace(os.Getenv("TG_AUTH_PASSWORD")),
+			func(msg string) { r.log.Warn(msg) },
 		)
 		if err := auth.NewFlow(userAuth, auth.SendCodeOptions{}).Run(ctx, r.client.Auth()); err != nil {
 			return fmt.Errorf("auth: %w", err)
@@ -73,18 +77,6 @@ func (r *Reader) Connect(ctx context.Context, ready chan<- struct{}) error {
 func (r *Reader) runUntilCancel(ctx context.Context) error {
 	<-ctx.Done()
 	return ctx.Err()
-}
-
-func authCodePrompt(ctx context.Context, sentCode *tg.AuthSentCode) (string, error) {
-	if v := os.Getenv("TG_AUTH_CODE"); v != "" {
-		return strings.TrimSpace(v), nil
-	}
-	fmt.Print("Enter Telegram code: ")
-	code, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(code), nil
 }
 
 func (r *Reader) FetchNewPosts(ctx context.Context, channelUsername string, afterID int, limit int) ([]Post, error) {
