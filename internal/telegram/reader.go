@@ -106,8 +106,48 @@ func (r *Reader) FetchNewPosts(ctx context.Context, channelUsername string, afte
 	return r.fetchPosts(ctx, channelUsername, afterID, 0, limit, true)
 }
 
-func (r *Reader) FetchHistoricalPage(ctx context.Context, channelUsername string, offsetID int, limit int) ([]Post, error) {
-	return r.fetchPosts(ctx, channelUsername, 0, offsetID, limit, false)
+func (r *Reader) LatestMessageID(ctx context.Context, channelUsername string) (int, error) {
+	if !r.ready || r.api == nil {
+		return 0, fmt.Errorf("reader not connected")
+	}
+
+	username := normalizeUsername(channelUsername)
+	resolved, err := r.api.ContactsResolveUsername(ctx, username)
+	if err != nil {
+		return 0, fmt.Errorf("resolve @%s: %w", username, err)
+	}
+
+	var channel *tg.Channel
+	for _, chat := range resolved.Chats {
+		if ch, ok := chat.(*tg.Channel); ok {
+			channel = ch
+			break
+		}
+	}
+	if channel == nil {
+		return 0, fmt.Errorf("channel @%s not found", username)
+	}
+
+	history, err := r.api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+		Peer:  &tg.InputPeerChannel{ChannelID: channel.ID, AccessHash: channel.AccessHash},
+		Limit: 1,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get history @%s: %w", username, err)
+	}
+
+	messages := extractMessages(history)
+	if len(messages) == 0 {
+		return 0, nil
+	}
+
+	maxID := 0
+	for _, msg := range messages {
+		if msg.ID > maxID {
+			maxID = msg.ID
+		}
+	}
+	return maxID, nil
 }
 
 func (r *Reader) fetchPosts(ctx context.Context, channelUsername string, minID, offsetID int, limit int, useMinID bool) ([]Post, error) {

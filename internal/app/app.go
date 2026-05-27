@@ -128,7 +128,7 @@ func (a *App) syncChannel(ctx context.Context, source string) error {
 	}
 
 	if lastID == 0 {
-		return a.backfillChannel(ctx, source, channelKey)
+		return a.initChannel(ctx, source, channelKey)
 	}
 
 	posts, err := a.reader.FetchNewPosts(ctx, source, lastID, a.cfg.App.BatchSize)
@@ -140,38 +140,21 @@ func (a *App) syncChannel(ctx context.Context, source string) error {
 	return err
 }
 
-func (a *App) backfillChannel(ctx context.Context, source, channelKey string) error {
-	offsetID := 0
-	maxID := 0
-
-	for {
-		posts, err := a.reader.FetchHistoricalPage(ctx, source, offsetID, a.cfg.App.BatchSize)
-		if err != nil {
-			return err
-		}
-		if len(posts) == 0 {
-			break
-		}
-
-		oldestID := posts[0].MessageID
-		newMax, err := a.processPosts(ctx, source, channelKey, maxID, posts)
-		if err != nil {
-			return err
-		}
-		if newMax > maxID {
-			maxID = newMax
-		}
-
-		if oldestID == offsetID {
-			break
-		}
-		offsetID = oldestID
+func (a *App) initChannel(ctx context.Context, source, channelKey string) error {
+	latestID, err := a.reader.LatestMessageID(ctx, source)
+	if err != nil {
+		return err
+	}
+	if latestID == 0 {
+		a.log.Info("channel is empty, waiting for first post", zap.String("channel", source))
+		return nil
 	}
 
-	if maxID > 0 {
-		return a.store.SetLastMessageID(channelKey, maxID)
-	}
-	return nil
+	a.log.Info("channel baseline set, only new posts will be published",
+		zap.String("channel", source),
+		zap.Int("last_message_id", latestID),
+	)
+	return a.store.SetLastMessageID(channelKey, latestID)
 }
 
 func (a *App) processPosts(ctx context.Context, source, channelKey string, lastID int, posts []telegram.Post) (int, error) {

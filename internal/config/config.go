@@ -92,7 +92,7 @@ func (c *Config) applyEnv() {
 
 func (c *Config) setDefaults() {
 	if c.App.PollInterval == 0 {
-		c.App.PollInterval = 5 * time.Minute
+		c.App.PollInterval = 2 * time.Minute
 	}
 	if c.App.DataDir == "" {
 		c.App.DataDir = "./data"
