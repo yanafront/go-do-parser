@@ -31,7 +31,7 @@ func (e envAuthenticator) Code(ctx context.Context, sentCode *tg.AuthSentCode) (
 	}
 	if !isInteractive() {
 		if e.logHint != nil {
-			e.logHint("Telegram sent login code to your phone. Add variable TG_AUTH_CODE in Railway, redeploy, then remove TG_AUTH_CODE after success.")
+			e.logHint("Telegram sent a NEW login code. Set TG_AUTH_CODE to the latest code only, redeploy once, then remove TG_AUTH_CODE after you see 'telegram authorized' in logs.")
 		}
 		return "", fmt.Errorf("TG_AUTH_CODE is not set")
 	}

@@ -42,28 +42,43 @@ func NormalizeChannelKey(s string) string {
 }
 
 func (r *Reader) Connect(ctx context.Context, ready chan<- struct{}) error {
-	sessionPath := filepath.Join(r.dataDir, "session.json")
-	sessionStorage := &session.FileStorage{Path: sessionPath}
+	sessionPath, err := prepareSession(r.dataDir)
+	if err != nil {
+		return err
+	}
 
-	if !sessionExists(sessionPath) {
-		r.log.Info("telegram session not found, login required",
-			zap.String("hint", "set TG_AUTH_CODE in Railway Variables and redeploy"),
+	if os.Getenv("TG_SESSION") != "" {
+		r.log.Info("telegram session restored from TG_SESSION env")
+	} else if sessionExists(sessionPath) {
+		r.log.Info("telegram session loaded from disk", zap.String("path", sessionPath))
+	} else {
+		r.log.Warn("telegram session not found",
+			zap.String("data_dir", r.dataDir),
+			zap.Bool("data_dir_writable", dataDirWritable(r.dataDir)),
+			zap.String("hint", "mount Railway Volume at /app/data OR set TG_SESSION (base64 of session.json)"),
 		)
 	}
+
+	sessionStorage := &session.FileStorage{Path: sessionPath}
 
 	r.client = telegram.NewClient(r.apiID, r.apiHash, telegram.Options{
 		SessionStorage: sessionStorage,
 	})
 
 	return r.client.Run(ctx, func(ctx context.Context) error {
-		userAuth := newEnvAuthenticator(
-			r.phone,
-			strings.TrimSpace(os.Getenv("TG_AUTH_PASSWORD")),
-			func(msg string) { r.log.Warn(msg) },
+		flow := auth.NewFlow(
+			newEnvAuthenticator(
+				r.phone,
+				strings.TrimSpace(os.Getenv("TG_AUTH_PASSWORD")),
+				func(msg string) { r.log.Warn(msg) },
+			),
+			auth.SendCodeOptions{},
 		)
-		if err := auth.NewFlow(userAuth, auth.SendCodeOptions{}).Run(ctx, r.client.Auth()); err != nil {
+		if err := r.client.Auth().IfNecessary(ctx, flow); err != nil {
 			return fmt.Errorf("auth: %w", err)
 		}
+
+		r.log.Info("telegram authorized")
 
 		r.api = r.client.API()
 		r.downloader = downloader.NewDownloader()
