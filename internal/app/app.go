@@ -42,6 +42,13 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		zap.Int64("chat_id", publisher.ChatID()),
 	)
 
+	channels := st.Snapshot()
+	if len(channels) > 0 {
+		log.Info(fmt.Sprintf("state loaded from %s: %v", st.Path(), channels))
+	} else {
+		log.Info(fmt.Sprintf("state empty, file=%s data_dir=%s", st.Path(), cfg.App.DataDir))
+	}
+
 	tmpDir := filepath.Join(cfg.App.DataDir, "tmp")
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		st.Close()
@@ -142,7 +149,8 @@ func (a *App) syncChannel(ctx context.Context, source string) error {
 		return err
 	}
 
-	a.log.Info("channel polled",
+	a.log.Info(fmt.Sprintf("channel polled %s last_id=%d new_messages=%d posts=%d",
+		source, lastID, fetched.MaxID-lastID, len(fetched.Posts)),
 		zap.String("channel", source),
 		zap.Int("last_id", lastID),
 		zap.Int("new_messages", fetched.MaxID-lastID),
@@ -162,11 +170,19 @@ func (a *App) initChannel(ctx context.Context, source, channelKey string) error 
 		return nil
 	}
 
-	a.log.Info("channel baseline set, only new posts will be published",
+	a.log.Info(fmt.Sprintf("channel baseline set %s last_message_id=%d", source, latestID),
 		zap.String("channel", source),
 		zap.Int("last_message_id", latestID),
 	)
-	return a.store.SetLastMessageID(channelKey, latestID)
+	if err := a.store.SetLastMessageID(channelKey, latestID); err != nil {
+		return fmt.Errorf("save baseline: %w", err)
+	}
+	saved, err := a.store.LastMessageID(channelKey)
+	if err != nil {
+		return err
+	}
+	a.log.Info(fmt.Sprintf("baseline saved %s last_id=%d", source, saved))
+	return nil
 }
 
 func (a *App) processPosts(ctx context.Context, source, channelKey string, lastID int, fetched telegram.FetchResult) error {
@@ -212,7 +228,11 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 		time.Sleep(1500 * time.Millisecond)
 	}
 
-	return a.store.SetLastMessageID(channelKey, maxID)
+	if err := a.store.SetLastMessageID(channelKey, maxID); err != nil {
+		return fmt.Errorf("save cursor: %w", err)
+	}
+	a.log.Info(fmt.Sprintf("cursor saved %s last_id=%d", source, maxID))
+	return nil
 }
 
 func (a *App) publishPost(ctx context.Context, post telegram.Post) (int, error) {

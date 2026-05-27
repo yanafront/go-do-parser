@@ -26,16 +26,34 @@ func Open(dataDir string) (*Store, error) {
 
 	s := &Store{
 		path: filepath.Join(dataDir, "state.json"),
-		data: diskState{
-			Channels:  make(map[string]int),
-			Published: make(map[string]map[string]int),
-		},
+		data: newDiskState(),
 	}
 
 	if err := s.load(); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+func newDiskState() diskState {
+	return diskState{
+		Channels:  make(map[string]int),
+		Published: make(map[string]map[string]int),
+	}
+}
+
+func (s *Store) Path() string {
+	return s.path
+}
+
+func (s *Store) Snapshot() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]int, len(s.data.Channels))
+	for k, v := range s.data.Channels {
+		out[k] = v
+	}
+	return out
 }
 
 func (s *Store) Close() error {
@@ -55,31 +73,50 @@ func (s *Store) load() error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return json.Unmarshal(b, &s.data)
+	if err := json.Unmarshal(b, &s.data); err != nil {
+		return err
+	}
+	s.data.ensureMaps()
+	return nil
+}
+
+func (d *diskState) ensureMaps() {
+	if d.Channels == nil {
+		d.Channels = make(map[string]int)
+	}
+	if d.Published == nil {
+		d.Published = make(map[string]map[string]int)
+	}
 }
 
 func (s *Store) save() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.data.ensureMaps()
 	b, err := json.MarshalIndent(s.data, "", "  ")
 	if err != nil {
 		return err
 	}
 	tmp := s.path + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
+		return fmt.Errorf("write state tmp: %w", err)
 	}
-	return os.Rename(tmp, s.path)
+	if err := os.Rename(tmp, s.path); err != nil {
+		return fmt.Errorf("rename state: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) LastMessageID(channelKey string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.data.ensureMaps()
 	return s.data.Channels[channelKey], nil
 }
 
 func (s *Store) SetLastMessageID(channelKey string, messageID int) error {
 	s.mu.Lock()
+	s.data.ensureMaps()
 	s.data.Channels[channelKey] = messageID
 	s.mu.Unlock()
 	return s.save()
@@ -88,6 +125,7 @@ func (s *Store) SetLastMessageID(channelKey string, messageID int) error {
 func (s *Store) IsPublished(sourceChannel string, messageID int) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.data.ensureMaps()
 	ch := s.data.Published[sourceChannel]
 	if ch == nil {
 		return false, nil
@@ -98,6 +136,7 @@ func (s *Store) IsPublished(sourceChannel string, messageID int) (bool, error) {
 
 func (s *Store) MarkPublished(sourceChannel string, messageID, destMessageID int) error {
 	s.mu.Lock()
+	s.data.ensureMaps()
 	if s.data.Published[sourceChannel] == nil {
 		s.data.Published[sourceChannel] = make(map[string]int)
 	}
