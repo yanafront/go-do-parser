@@ -1,6 +1,6 @@
 /data/
 /config.yaml
 .env
-*.db
+state.json
 session.json
 .idea/
