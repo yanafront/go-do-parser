@@ -204,6 +204,10 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 			continue
 		}
 
+		if !telegram.HasContact(post) {
+			continue
+		}
+
 		destID, err := a.publishPost(ctx, post)
 		if err != nil {
 			a.log.Warn("publish failed",
