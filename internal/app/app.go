@@ -37,7 +37,10 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		return nil, err
 	}
 
-	log.Info("destination channel ok", zap.String("channel", publisher.Destination()))
+	log.Info("destination channel ok",
+		zap.String("channel", publisher.Destination()),
+		zap.Int64("chat_id", publisher.ChatID()),
+	)
 
 	tmpDir := filepath.Join(cfg.App.DataDir, "tmp")
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
