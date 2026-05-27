@@ -52,11 +52,20 @@ func (r *Reader) Connect(ctx context.Context, ready chan<- struct{}) error {
 	} else if sessionExists(sessionPath) {
 		r.log.Info("telegram session loaded from disk", zap.String("path", sessionPath))
 	} else {
-		r.log.Warn("telegram session not found",
+		onRailway := os.Getenv("RAILWAY_ENVIRONMENT") != ""
+		hasVolume := os.Getenv("RAILWAY_VOLUME_MOUNT_PATH") != ""
+		hasSessionEnv := os.Getenv("TG_SESSION") != ""
+
+		fields := []zap.Field{
 			zap.String("data_dir", r.dataDir),
 			zap.Bool("data_dir_writable", dataDirWritable(r.dataDir)),
-			zap.String("hint", "mount Railway Volume at /app/data OR set TG_SESSION (base64 of session.json)"),
-		)
+		}
+		if onRailway && !hasVolume && !hasSessionEnv {
+			fields = append(fields, zap.String("hint", "add Volume via canvas (right-click service → Add Volume, path /app/data) OR set TG_SESSION"))
+		} else {
+			fields = append(fields, zap.String("hint", "set TG_AUTH_CODE to the latest Telegram code, redeploy once"))
+		}
+		r.log.Warn("telegram session not found", fields...)
 	}
 
 	sessionStorage := &session.FileStorage{Path: sessionPath}

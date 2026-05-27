@@ -1,19 +1,18 @@
 FROM golang:1.22-alpine AS builder
 
-RUN apk add --no-cache gcc musl-dev sqlite-dev
+RUN apk add --no-cache git
 
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-
+COPY go.mod ./
 COPY cmd ./cmd
 COPY internal ./internal
+RUN go mod tidy && go mod download
 
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o /parser ./cmd/parser
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /parser ./cmd/parser
 
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates sqlite-libs tzdata
+RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 COPY --from=builder /parser /app/parser
