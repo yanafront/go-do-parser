@@ -101,9 +101,7 @@ func (r *Reader) fetchPosts(ctx context.Context, channelUsername string, minID, 
 	}
 
 	username := normalizeUsername(channelUsername)
-	resolved, err := r.api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
-		Username: username,
-	})
+	resolved, err := r.api.ContactsResolveUsername(ctx, username)
 	if err != nil {
 		return nil, fmt.Errorf("resolve @%s: %w", username, err)
 	}
@@ -161,9 +159,7 @@ func (r *Reader) DownloadMedia(ctx context.Context, channelUsername string, mess
 	}
 
 	username := normalizeUsername(channelUsername)
-	resolved, err := r.api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
-		Username: username,
-	})
+	resolved, err := r.api.ContactsResolveUsername(ctx, username)
 	if err != nil {
 		return fmt.Errorf("resolve @%s: %w", username, err)
 	}
