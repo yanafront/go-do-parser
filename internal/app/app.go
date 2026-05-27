@@ -128,16 +128,28 @@ func (a *App) syncChannel(ctx context.Context, source string) error {
 	}
 
 	if lastID == 0 {
-		return a.initChannel(ctx, source, channelKey)
+		if err := a.initChannel(ctx, source, channelKey); err != nil {
+			return err
+		}
+		lastID, err = a.store.LastMessageID(channelKey)
+		if err != nil {
+			return err
+		}
 	}
 
-	posts, err := a.reader.FetchNewPosts(ctx, source, lastID, a.cfg.App.BatchSize)
+	fetched, err := a.reader.FetchNewPosts(ctx, source, lastID, a.cfg.App.BatchSize)
 	if err != nil {
 		return err
 	}
 
-	_, err = a.processPosts(ctx, source, channelKey, lastID, posts)
-	return err
+	a.log.Info("channel polled",
+		zap.String("channel", source),
+		zap.Int("last_id", lastID),
+		zap.Int("new_messages", fetched.MaxID-lastID),
+		zap.Int("posts_to_publish", len(fetched.Posts)),
+	)
+
+	return a.processPosts(ctx, source, channelKey, lastID, fetched)
 }
 
 func (a *App) initChannel(ctx context.Context, source, channelKey string) error {
@@ -157,28 +169,22 @@ func (a *App) initChannel(ctx context.Context, source, channelKey string) error 
 	return a.store.SetLastMessageID(channelKey, latestID)
 }
 
-func (a *App) processPosts(ctx context.Context, source, channelKey string, lastID int, posts []telegram.Post) (int, error) {
-	if len(posts) == 0 {
-		return lastID, nil
+func (a *App) processPosts(ctx context.Context, source, channelKey string, lastID int, fetched telegram.FetchResult) error {
+	maxID := fetched.MaxID
+	if maxID <= lastID {
+		return nil
 	}
 
-	maxID := lastID
-	for _, post := range posts {
+	for _, post := range fetched.Posts {
 		published, err := a.store.IsPublished(channelKey, post.MessageID)
 		if err != nil {
-			return maxID, err
+			return err
 		}
 		if published {
-			if post.MessageID > maxID {
-				maxID = post.MessageID
-			}
 			continue
 		}
 
 		if post.GroupedID != 0 {
-			if post.MessageID > maxID {
-				maxID = post.MessageID
-			}
 			continue
 		}
 
@@ -194,11 +200,7 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 		}
 
 		if err := a.store.MarkPublished(channelKey, post.MessageID, destID); err != nil {
-			return maxID, err
-		}
-
-		if post.MessageID > maxID {
-			maxID = post.MessageID
+			return err
 		}
 
 		a.log.Info("published",
@@ -210,12 +212,7 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 		time.Sleep(1500 * time.Millisecond)
 	}
 
-	if maxID > lastID {
-		if err := a.store.SetLastMessageID(channelKey, maxID); err != nil {
-			return maxID, err
-		}
-	}
-	return maxID, nil
+	return a.store.SetLastMessageID(channelKey, maxID)
 }
 
 func (a *App) publishPost(ctx context.Context, post telegram.Post) (int, error) {

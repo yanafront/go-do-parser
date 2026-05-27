@@ -10,3 +10,8 @@ type Post struct {
 	Caption       string
 	GroupedID     int64
 }
+
+type FetchResult struct {
+	Posts []Post
+	MaxID int
+}

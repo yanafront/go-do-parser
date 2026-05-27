@@ -102,8 +102,60 @@ func (r *Reader) runUntilCancel(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (r *Reader) FetchNewPosts(ctx context.Context, channelUsername string, afterID int, limit int) ([]Post, error) {
-	return r.fetchPosts(ctx, channelUsername, afterID, 0, limit, true)
+func (r *Reader) FetchNewPosts(ctx context.Context, channelUsername string, afterID int, limit int) (FetchResult, error) {
+	if !r.ready || r.api == nil {
+		return FetchResult{}, fmt.Errorf("reader not connected")
+	}
+
+	username := normalizeUsername(channelUsername)
+	resolved, err := r.api.ContactsResolveUsername(ctx, username)
+	if err != nil {
+		return FetchResult{}, fmt.Errorf("resolve @%s: %w", username, err)
+	}
+
+	var channel *tg.Channel
+	for _, chat := range resolved.Chats {
+		if ch, ok := chat.(*tg.Channel); ok {
+			channel = ch
+			break
+		}
+	}
+	if channel == nil {
+		return FetchResult{}, fmt.Errorf("channel @%s not found", username)
+	}
+
+	history, err := r.api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+		Peer:  &tg.InputPeerChannel{ChannelID: channel.ID, AccessHash: channel.AccessHash},
+		Limit: limit,
+	})
+	if err != nil {
+		return FetchResult{}, fmt.Errorf("get history @%s: %w", username, err)
+	}
+
+	messages := extractMessages(history)
+	result := FetchResult{MaxID: afterID}
+	posts := make([]Post, 0)
+
+	for _, msg := range messages {
+		if msg.ID <= afterID {
+			continue
+		}
+		if msg.ID > result.MaxID {
+			result.MaxID = msg.ID
+		}
+		post, ok := messageToPost(username, msg)
+		if !ok {
+			continue
+		}
+		post.SourceChannel = channelUsername
+		posts = append(posts, post)
+	}
+
+	for i, j := 0, len(posts)-1; i < j; i, j = i+1, j-1 {
+		posts[i], posts[j] = posts[j], posts[i]
+	}
+	result.Posts = posts
+	return result, nil
 }
 
 func (r *Reader) LatestMessageID(ctx context.Context, channelUsername string) (int, error) {
@@ -148,64 +200,6 @@ func (r *Reader) LatestMessageID(ctx context.Context, channelUsername string) (i
 		}
 	}
 	return maxID, nil
-}
-
-func (r *Reader) fetchPosts(ctx context.Context, channelUsername string, minID, offsetID int, limit int, useMinID bool) ([]Post, error) {
-	if !r.ready || r.api == nil {
-		return nil, fmt.Errorf("reader not connected")
-	}
-
-	username := normalizeUsername(channelUsername)
-	resolved, err := r.api.ContactsResolveUsername(ctx, username)
-	if err != nil {
-		return nil, fmt.Errorf("resolve @%s: %w", username, err)
-	}
-
-	var channel *tg.Channel
-	for _, chat := range resolved.Chats {
-		if ch, ok := chat.(*tg.Channel); ok {
-			channel = ch
-			break
-		}
-	}
-	if channel == nil {
-		return nil, fmt.Errorf("channel @%s not found", username)
-	}
-
-	req := &tg.MessagesGetHistoryRequest{
-		Peer:  &tg.InputPeerChannel{ChannelID: channel.ID, AccessHash: channel.AccessHash},
-		Limit: limit,
-	}
-	if useMinID {
-		req.MinID = minID
-	} else {
-		req.OffsetID = offsetID
-	}
-
-	history, err := r.api.MessagesGetHistory(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("get history @%s: %w", username, err)
-	}
-
-	messages := extractMessages(history)
-	posts := make([]Post, 0, len(messages))
-	for _, msg := range messages {
-		if useMinID && msg.ID <= minID {
-			continue
-		}
-		post, ok := messageToPost(username, msg)
-		if !ok {
-			continue
-		}
-		post.SourceChannel = channelUsername
-		posts = append(posts, post)
-	}
-
-	for i, j := 0, len(posts)-1; i < j; i, j = i+1, j-1 {
-		posts[i], posts[j] = posts[j], posts[i]
-	}
-
-	return posts, nil
 }
 
 func (r *Reader) DownloadMedia(ctx context.Context, channelUsername string, messageID int, destPath string) error {

@@ -98,7 +98,7 @@ func (c *Config) setDefaults() {
 		c.App.DataDir = "./data"
 	}
 	if c.App.BatchSize == 0 {
-		c.App.BatchSize = 20
+		c.App.BatchSize = 50
 	}
 }
 
