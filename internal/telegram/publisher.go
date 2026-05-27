@@ -158,9 +158,9 @@ func formatText(post Post) string {
 		text = strings.TrimSpace(post.Caption)
 	}
 	if text == "" {
-		return ""
+		return sourceTag(post)
 	}
-	return escapeHTML(text)
+	return sourceTag(post) + "\n\n" + escapeHTML(text)
 }
 
 func formatCaption(post Post) string {
@@ -169,9 +169,14 @@ func formatCaption(post Post) string {
 		text = strings.TrimSpace(post.Text)
 	}
 	if text == "" {
-		return ""
+		return sourceTag(post)
 	}
-	return escapeHTML(text)
+	return sourceTag(post) + "\n\n" + escapeHTML(text)
+}
+
+func sourceTag(post Post) string {
+	channel := normalizeUsername(post.SourceChannel)
+	return fmt.Sprintf("<i>@%s</i>", escapeHTML(channel))
 }
 
 func escapeHTML(s string) string {
