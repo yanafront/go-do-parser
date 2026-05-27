@@ -1,0 +1,14 @@
+telegram:
+  api_id: 0
+  api_hash: ""
+  phone: "+79001234567"
+  bot_token: ""
+  destination: "@my_output_channel"
+  sources:
+    - "@source_channel_1"
+    - "@source_channel_2"
+
+app:
+  poll_interval: 5m
+  data_dir: ./data
+  batch_size: 20

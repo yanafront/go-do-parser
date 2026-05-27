@@ -1,0 +1,6 @@
+/data/
+/config.yaml
+.env
+*.db
+session.json
+.idea/
