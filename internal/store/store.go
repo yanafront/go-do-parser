@@ -15,8 +15,9 @@ type Store struct {
 }
 
 type diskState struct {
-	Channels  map[string]int            `json:"channels"`
-	Published map[string]map[string]int `json:"published"`
+	Channels     map[string]int            `json:"channels"`
+	Published    map[string]map[string]int `json:"published"`
+	PublishCount int                       `json:"publish_count"`
 }
 
 func Open(dataDir string) (*Store, error) {
@@ -143,4 +144,20 @@ func (s *Store) MarkPublished(sourceChannel string, messageID, destMessageID int
 	s.data.Published[sourceChannel][fmt.Sprintf("%d", messageID)] = destMessageID
 	s.mu.Unlock()
 	return s.save()
+}
+
+func (s *Store) PublishCount() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.ensureMaps()
+	return s.data.PublishCount, nil
+}
+
+func (s *Store) BumpPublishCount() (int, error) {
+	s.mu.Lock()
+	s.data.ensureMaps()
+	s.data.PublishCount++
+	n := s.data.PublishCount
+	s.mu.Unlock()
+	return n, s.save()
 }

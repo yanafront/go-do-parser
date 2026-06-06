@@ -13,9 +13,10 @@ type Publisher struct {
 	bot         *tgbotapi.BotAPI
 	destChat    tgbotapi.BaseChat
 	destination string
+	matcherBot  string
 }
 
-func NewPublisher(token, destination string) (*Publisher, error) {
+func NewPublisher(token, destination, matcherBot string) (*Publisher, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("create bot: %w", err)
@@ -25,6 +26,7 @@ func NewPublisher(token, destination string) (*Publisher, error) {
 	p := &Publisher{
 		bot:         bot,
 		destination: dest,
+		matcherBot:  strings.TrimSpace(matcherBot),
 	}
 
 	if strings.HasPrefix(dest, "-") || (dest != "" && dest[0] >= '0' && dest[0] <= '9') {
@@ -86,9 +88,9 @@ func (p *Publisher) ValidateAccess() error {
 	return nil
 }
 
-func (p *Publisher) Publish(post Post, mediaPath string) (int, error) {
+func (p *Publisher) Publish(post Post, mediaPath string, attachPromo bool) (int, error) {
 	if post.HasMedia && mediaPath != "" {
-		return p.sendMedia(post, mediaPath)
+		return p.sendMedia(post, mediaPath, attachPromo)
 	}
 
 	text := formatText(post)
@@ -99,6 +101,9 @@ func (p *Publisher) Publish(post Post, mediaPath string) (int, error) {
 	msg := tgbotapi.NewMessage(p.destChat.ChatID, text)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.DisableWebPagePreview = false
+	if attachPromo {
+		msg.ReplyMarkup = p.promoKeyboard()
+	}
 
 	sent, err := p.bot.Send(msg)
 	if err != nil {
@@ -107,16 +112,46 @@ func (p *Publisher) Publish(post Post, mediaPath string) (int, error) {
 	return sent.MessageID, nil
 }
 
-func (p *Publisher) sendMedia(post Post, mediaPath string) (int, error) {
+func (p *Publisher) promoKeyboard() *tgbotapi.InlineKeyboardMarkup {
+	url := matcherBotURL(p.matcherBot)
+	if url == "" {
+		return nil
+	}
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonURL("🤖 Подбор под тебя", url),
+		),
+	)
+	return &kb
+}
+
+func matcherBotURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	raw = strings.TrimPrefix(raw, "@")
+	return "https://t.me/" + raw
+}
+
+func (p *Publisher) sendMedia(post Post, mediaPath string, attachPromo bool) (int, error) {
 	caption := formatCaption(post)
 	file := tgbotapi.FilePath(mediaPath)
 	chatID := p.destChat.ChatID
+	var kb *tgbotapi.InlineKeyboardMarkup
+	if attachPromo {
+		kb = p.promoKeyboard()
+	}
 
 	switch post.MediaKind {
 	case "photo":
 		photo := tgbotapi.NewPhoto(chatID, file)
 		photo.Caption = caption
 		photo.ParseMode = tgbotapi.ModeHTML
+		photo.ReplyMarkup = kb
 		sent, err := p.bot.Send(photo)
 		if err != nil {
 			return 0, err
@@ -126,6 +161,7 @@ func (p *Publisher) sendMedia(post Post, mediaPath string) (int, error) {
 		video := tgbotapi.NewVideo(chatID, file)
 		video.Caption = caption
 		video.ParseMode = tgbotapi.ModeHTML
+		video.ReplyMarkup = kb
 		sent, err := p.bot.Send(video)
 		if err != nil {
 			return 0, err
@@ -135,6 +171,7 @@ func (p *Publisher) sendMedia(post Post, mediaPath string) (int, error) {
 		anim := tgbotapi.NewAnimation(chatID, file)
 		anim.Caption = caption
 		anim.ParseMode = tgbotapi.ModeHTML
+		anim.ReplyMarkup = kb
 		sent, err := p.bot.Send(anim)
 		if err != nil {
 			return 0, err
@@ -144,6 +181,7 @@ func (p *Publisher) sendMedia(post Post, mediaPath string) (int, error) {
 		doc := tgbotapi.NewDocument(chatID, file)
 		doc.Caption = caption
 		doc.ParseMode = tgbotapi.ModeHTML
+		doc.ReplyMarkup = kb
 		sent, err := p.bot.Send(doc)
 		if err != nil {
 			return 0, err

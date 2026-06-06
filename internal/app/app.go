@@ -27,7 +27,7 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		return nil, err
 	}
 
-	publisher, err := telegram.NewPublisher(cfg.Telegram.BotToken, cfg.Telegram.Destination)
+	publisher, err := telegram.NewPublisher(cfg.Telegram.BotToken, cfg.Telegram.Destination, cfg.Telegram.MatcherBot)
 	if err != nil {
 		st.Close()
 		return nil, err
@@ -219,6 +219,10 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 			continue
 		}
 
+		if _, err := a.store.BumpPublishCount(); err != nil {
+			return err
+		}
+
 		if err := a.store.MarkPublished(channelKey, post.MessageID, destID); err != nil {
 			return err
 		}
@@ -249,5 +253,14 @@ func (a *App) publishPost(ctx context.Context, post telegram.Post) (int, error) 
 		defer telegram.CleanupMedia(mediaPath)
 	}
 
-	return a.publisher.Publish(post, mediaPath)
+	count, err := a.store.PublishCount()
+	if err != nil {
+		return 0, err
+	}
+	attachPromo := a.cfg.Telegram.MatcherBot != "" && (count+1)%a.cfg.App.PromoEvery == 0
+	if attachPromo {
+		a.log.Info("matcher promo button attached", zap.Int("publish_num", count+1))
+	}
+
+	return a.publisher.Publish(post, mediaPath, attachPromo)
 }

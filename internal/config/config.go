@@ -20,12 +20,14 @@ type TelegramConfig struct {
 	BotToken    string   `yaml:"bot_token"`
 	Destination string   `yaml:"destination"`
 	Sources     []string `yaml:"sources"`
+	MatcherBot  string   `yaml:"matcher_bot"`
 }
 
 type AppConfig struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 	DataDir      string        `yaml:"data_dir"`
 	BatchSize    int           `yaml:"batch_size"`
+	PromoEvery   int           `yaml:"promo_every"`
 }
 
 func Load(path string) (*Config, error) {
@@ -74,6 +76,9 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("TG_SOURCES"); v != "" {
 		c.Telegram.Sources = splitSources(v)
 	}
+	if v := os.Getenv("MATCHER_BOT"); v != "" {
+		c.Telegram.MatcherBot = v
+	}
 	if v := os.Getenv("DATA_DIR"); v != "" {
 		c.App.DataDir = v
 	}
@@ -88,6 +93,12 @@ func (c *Config) applyEnv() {
 			c.App.BatchSize = n
 		}
 	}
+	if v := os.Getenv("PROMO_EVERY"); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
+			c.App.PromoEvery = n
+		}
+	}
 }
 
 func (c *Config) setDefaults() {
@@ -99,6 +110,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.App.BatchSize == 0 {
 		c.App.BatchSize = 50
+	}
+	if c.App.PromoEvery == 0 {
+		c.App.PromoEvery = 10
 	}
 }
 
