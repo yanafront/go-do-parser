@@ -102,7 +102,11 @@ func (p *Publisher) Publish(post Post, mediaPath string, attachPromo bool) (int,
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.DisableWebPagePreview = false
 	if attachPromo {
-		msg.ReplyMarkup = p.promoKeyboard()
+		kb := p.promoKeyboard()
+		if kb == nil {
+			return 0, fmt.Errorf("promo requested but MATCHER_BOT is empty")
+		}
+		msg.ReplyMarkup = kb
 	}
 
 	sent, err := p.bot.Send(msg)
@@ -144,6 +148,9 @@ func (p *Publisher) sendMedia(post Post, mediaPath string, attachPromo bool) (in
 	var kb *tgbotapi.InlineKeyboardMarkup
 	if attachPromo {
 		kb = p.promoKeyboard()
+		if kb == nil {
+			return 0, fmt.Errorf("promo requested but MATCHER_BOT is empty")
+		}
 	}
 
 	switch post.MediaKind {

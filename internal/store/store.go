@@ -146,18 +146,13 @@ func (s *Store) MarkPublished(sourceChannel string, messageID, destMessageID int
 	return s.save()
 }
 
-func (s *Store) PublishCount() (int, error) {
+func (s *Store) TotalPublished() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data.ensureMaps()
-	return s.data.PublishCount, nil
-}
-
-func (s *Store) BumpPublishCount() (int, error) {
-	s.mu.Lock()
-	s.data.ensureMaps()
-	s.data.PublishCount++
-	n := s.data.PublishCount
-	s.mu.Unlock()
-	return n, s.save()
+	total := 0
+	for _, ch := range s.data.Published {
+		total += len(ch)
+	}
+	return total
 }

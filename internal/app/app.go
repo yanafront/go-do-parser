@@ -41,6 +41,13 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		zap.String("channel", publisher.Destination()),
 		zap.Int64("chat_id", publisher.ChatID()),
 	)
+	if cfg.Telegram.MatcherBot != "" {
+		log.Info("matcher promo enabled",
+			zap.String("matcher_bot", cfg.Telegram.MatcherBot),
+			zap.Int("promo_every", cfg.App.PromoEvery),
+			zap.Int("published_so_far", st.TotalPublished()),
+		)
+	}
 
 	channels := st.Snapshot()
 	if len(channels) > 0 {
@@ -219,18 +226,17 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 			continue
 		}
 
-		if _, err := a.store.BumpPublishCount(); err != nil {
-			return err
-		}
-
 		if err := a.store.MarkPublished(channelKey, post.MessageID, destID); err != nil {
 			return err
 		}
 
+		total := a.store.TotalPublished()
 		a.log.Info("published",
 			zap.String("source", source),
 			zap.Int("message_id", post.MessageID),
 			zap.Int("dest_message_id", destID),
+			zap.Int("publish_total", total),
+			zap.Bool("promo_button", total% a.cfg.App.PromoEvery == 0),
 		)
 
 		time.Sleep(1500 * time.Millisecond)
@@ -253,13 +259,11 @@ func (a *App) publishPost(ctx context.Context, post telegram.Post) (int, error) 
 		defer telegram.CleanupMedia(mediaPath)
 	}
 
-	count, err := a.store.PublishCount()
-	if err != nil {
-		return 0, err
-	}
-	attachPromo := a.cfg.Telegram.MatcherBot != "" && (count+1)%a.cfg.App.PromoEvery == 0
+	total := a.store.TotalPublished()
+	nextNum := total + 1
+	attachPromo := a.cfg.Telegram.MatcherBot != "" && nextNum%a.cfg.App.PromoEvery == 0
 	if attachPromo {
-		a.log.Info("matcher promo button attached", zap.Int("publish_num", count+1))
+		a.log.Info("matcher promo button", zap.Int("publish_num", nextNum))
 	}
 
 	return a.publisher.Publish(post, mediaPath, attachPromo)
