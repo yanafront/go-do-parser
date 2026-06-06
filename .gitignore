@@ -3,4 +3,5 @@
 .env
 state.json
 session.json
+tg_session.b64
 .idea/
