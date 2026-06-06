@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func prepareSession(dataDir string) (sessionPath string, err error) {
@@ -15,9 +16,10 @@ func prepareSession(dataDir string) (sessionPath string, err error) {
 	sessionPath = filepath.Join(dataDir, "session.json")
 
 	if raw := os.Getenv("TG_SESSION"); raw != "" {
+		raw = normalizeBase64Env(raw)
 		data, err := base64.StdEncoding.DecodeString(raw)
 		if err != nil {
-			return "", fmt.Errorf("decode TG_SESSION: %w", err)
+			return "", fmt.Errorf("decode TG_SESSION: %w (проверьте: одна строка без пробелов и кавычек)", err)
 		}
 		if err := os.WriteFile(sessionPath, data, 0o600); err != nil {
 			return "", fmt.Errorf("write session from TG_SESSION: %w", err)
@@ -25,6 +27,15 @@ func prepareSession(dataDir string) (sessionPath string, err error) {
 	}
 
 	return sessionPath, nil
+}
+
+func normalizeBase64Env(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, `"'`)
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, " ", "")
+	return s
 }
 
 func dataDirWritable(dataDir string) bool {
