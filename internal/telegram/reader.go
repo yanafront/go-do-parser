@@ -23,6 +23,7 @@ type Reader struct {
 	client      *telegram.Client
 	api         *tg.Client
 	downloader  *downloader.Downloader
+	channels    *channelResolver
 	ready       bool
 }
 
@@ -90,6 +91,7 @@ func (r *Reader) Connect(ctx context.Context, ready chan<- struct{}) error {
 
 		r.api = r.client.API()
 		r.downloader = downloader.NewDownloader()
+		r.channels = newChannelResolver(r.api)
 		r.ready = true
 
 		close(ready)
@@ -108,20 +110,9 @@ func (r *Reader) FetchNewPosts(ctx context.Context, channelUsername string, afte
 	}
 
 	username := normalizeUsername(channelUsername)
-	resolved, err := r.api.ContactsResolveUsername(ctx, username)
+	channel, err := r.channels.get(ctx, username)
 	if err != nil {
-		return FetchResult{}, fmt.Errorf("resolve @%s: %w", username, err)
-	}
-
-	var channel *tg.Channel
-	for _, chat := range resolved.Chats {
-		if ch, ok := chat.(*tg.Channel); ok {
-			channel = ch
-			break
-		}
-	}
-	if channel == nil {
-		return FetchResult{}, fmt.Errorf("channel @%s not found", username)
+		return FetchResult{}, err
 	}
 
 	history, err := r.api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
@@ -164,20 +155,9 @@ func (r *Reader) LatestMessageID(ctx context.Context, channelUsername string) (i
 	}
 
 	username := normalizeUsername(channelUsername)
-	resolved, err := r.api.ContactsResolveUsername(ctx, username)
+	channel, err := r.channels.get(ctx, username)
 	if err != nil {
-		return 0, fmt.Errorf("resolve @%s: %w", username, err)
-	}
-
-	var channel *tg.Channel
-	for _, chat := range resolved.Chats {
-		if ch, ok := chat.(*tg.Channel); ok {
-			channel = ch
-			break
-		}
-	}
-	if channel == nil {
-		return 0, fmt.Errorf("channel @%s not found", username)
+		return 0, err
 	}
 
 	history, err := r.api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
@@ -208,20 +188,9 @@ func (r *Reader) DownloadMedia(ctx context.Context, channelUsername string, mess
 	}
 
 	username := normalizeUsername(channelUsername)
-	resolved, err := r.api.ContactsResolveUsername(ctx, username)
+	channel, err := r.channels.get(ctx, username)
 	if err != nil {
-		return fmt.Errorf("resolve @%s: %w", username, err)
-	}
-
-	var channel *tg.Channel
-	for _, chat := range resolved.Chats {
-		if ch, ok := chat.(*tg.Channel); ok {
-			channel = ch
-			break
-		}
-	}
-	if channel == nil {
-		return fmt.Errorf("channel @%s not found", username)
+		return err
 	}
 
 	msgs, err := r.api.ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{
