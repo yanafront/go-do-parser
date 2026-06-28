@@ -27,7 +27,7 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		return nil, err
 	}
 
-	publisher, err := telegram.NewPublisher(cfg.Telegram.BotToken, cfg.Telegram.Destination, cfg.Telegram.MatcherBot)
+	publisher, err := telegram.NewPublisher(cfg.Telegram.BotToken, cfg.Telegram.Destination, cfg.Telegram.MatcherBot, cfg.Telegram.PlatformURL)
 	if err != nil {
 		st.Close()
 		return nil, err
@@ -41,10 +41,12 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		zap.String("channel", publisher.Destination()),
 		zap.Int64("chat_id", publisher.ChatID()),
 	)
-	if cfg.Telegram.MatcherBot != "" {
-		log.Info("matcher promo enabled",
+	if cfg.Telegram.MatcherBot != "" || cfg.Telegram.PlatformURL != "" {
+		log.Info("promo enabled",
 			zap.String("matcher_bot", cfg.Telegram.MatcherBot),
-			zap.Int("promo_every", cfg.App.PromoEvery),
+			zap.String("platform_url", cfg.Telegram.PlatformURL),
+			zap.Int("matcher_every", cfg.App.PromoEvery),
+			zap.Int("platform_every", cfg.App.PlatformEvery),
 			zap.Int("published_so_far", st.TotalPublished()),
 		)
 	}
@@ -261,10 +263,15 @@ func (a *App) publishPost(ctx context.Context, post telegram.Post) (int, error) 
 
 	total := a.store.TotalPublished()
 	nextNum := total + 1
-	attachPromo := a.cfg.Telegram.MatcherBot != "" && nextNum%a.cfg.App.PromoEvery == 0
-	if attachPromo {
-		a.log.Info("matcher promo button", zap.Int("publish_num", nextNum))
+	showMatcher := a.cfg.Telegram.MatcherBot != "" && nextNum%a.cfg.App.PromoEvery == 0
+	showPlatform := a.cfg.Telegram.PlatformURL != "" && nextNum%a.cfg.App.PlatformEvery == 0
+	if showMatcher || showPlatform {
+		a.log.Info("promo button",
+			zap.Int("publish_num", nextNum),
+			zap.Bool("matcher", showMatcher),
+			zap.Bool("platform", showPlatform),
+		)
 	}
 
-	return a.publisher.Publish(post, mediaPath, attachPromo)
+	return a.publisher.Publish(post, mediaPath, showMatcher, showPlatform)
 }

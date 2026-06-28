@@ -14,9 +14,10 @@ type Publisher struct {
 	destChat    tgbotapi.BaseChat
 	destination string
 	matcherBot  string
+	platformURL string
 }
 
-func NewPublisher(token, destination, matcherBot string) (*Publisher, error) {
+func NewPublisher(token, destination, matcherBot, platformURL string) (*Publisher, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("create bot: %w", err)
@@ -27,6 +28,7 @@ func NewPublisher(token, destination, matcherBot string) (*Publisher, error) {
 		bot:         bot,
 		destination: dest,
 		matcherBot:  strings.TrimSpace(matcherBot),
+		platformURL: strings.TrimSpace(platformURL),
 	}
 
 	if strings.HasPrefix(dest, "-") || (dest != "" && dest[0] >= '0' && dest[0] <= '9') {
@@ -88,9 +90,9 @@ func (p *Publisher) ValidateAccess() error {
 	return nil
 }
 
-func (p *Publisher) Publish(post Post, mediaPath string, attachPromo bool) (int, error) {
+func (p *Publisher) Publish(post Post, mediaPath string, showMatcher, showPlatform bool) (int, error) {
 	if post.HasMedia && mediaPath != "" {
-		return p.sendMedia(post, mediaPath, attachPromo)
+		return p.sendMedia(post, mediaPath, showMatcher, showPlatform)
 	}
 
 	text := formatText(post)
@@ -101,11 +103,7 @@ func (p *Publisher) Publish(post Post, mediaPath string, attachPromo bool) (int,
 	msg := tgbotapi.NewMessage(p.destChat.ChatID, text)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.DisableWebPagePreview = false
-	if attachPromo {
-		kb := p.promoKeyboard()
-		if kb == nil {
-			return 0, fmt.Errorf("promo requested but MATCHER_BOT is empty")
-		}
+	if kb := p.promoKeyboard(showMatcher, showPlatform); kb != nil {
 		msg.ReplyMarkup = kb
 	}
 
@@ -116,16 +114,24 @@ func (p *Publisher) Publish(post Post, mediaPath string, attachPromo bool) (int,
 	return sent.MessageID, nil
 }
 
-func (p *Publisher) promoKeyboard() *tgbotapi.InlineKeyboardMarkup {
-	url := matcherBotURL(p.matcherBot)
-	if url == "" {
+func (p *Publisher) promoKeyboard(showMatcher, showPlatform bool) *tgbotapi.InlineKeyboardMarkup {
+	var rows [][]tgbotapi.InlineKeyboardButton
+	if showMatcher {
+		if url := matcherBotURL(p.matcherBot); url != "" {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonURL("🤖 Подбор под тебя", url),
+			))
+		}
+	}
+	if showPlatform && p.platformURL != "" {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonURL("🔎 Еще больше вакансий на podrabotki.by", p.platformURL),
+		))
+	}
+	if len(rows) == 0 {
 		return nil
 	}
-	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("🤖 Подбор под тебя", url),
-		),
-	)
+	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 	return &kb
 }
 
@@ -141,17 +147,11 @@ func matcherBotURL(raw string) string {
 	return "https://t.me/" + raw
 }
 
-func (p *Publisher) sendMedia(post Post, mediaPath string, attachPromo bool) (int, error) {
+func (p *Publisher) sendMedia(post Post, mediaPath string, showMatcher, showPlatform bool) (int, error) {
 	caption := formatCaption(post)
 	file := tgbotapi.FilePath(mediaPath)
 	chatID := p.destChat.ChatID
-	var kb *tgbotapi.InlineKeyboardMarkup
-	if attachPromo {
-		kb = p.promoKeyboard()
-		if kb == nil {
-			return 0, fmt.Errorf("promo requested but MATCHER_BOT is empty")
-		}
-	}
+	kb := p.promoKeyboard(showMatcher, showPlatform)
 
 	switch post.MediaKind {
 	case "photo":
