@@ -10,6 +10,7 @@ import (
 	"github.com/anadubesko/go-do-parser/internal/config"
 	"github.com/anadubesko/go-do-parser/internal/store"
 	"github.com/anadubesko/go-do-parser/internal/telegram"
+	"github.com/anadubesko/go-do-parser/internal/webhook"
 	"go.uber.org/zap"
 )
 
@@ -18,6 +19,7 @@ type App struct {
 	store     *store.Store
 	reader    *telegram.Reader
 	publisher *telegram.Publisher
+	webhook   *webhook.Client
 	log       *zap.Logger
 }
 
@@ -77,6 +79,7 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		store:     st,
 		reader:    reader,
 		publisher: publisher,
+		webhook:   webhook.New(cfg.Telegram.MatcherURL, cfg.Telegram.IngestSecret),
 		log:       log,
 	}, nil
 }
@@ -240,6 +243,19 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 			zap.Int("publish_total", total),
 			zap.Bool("promo_button", total% a.cfg.App.PromoEvery == 0),
 		)
+
+		if a.webhook.Enabled() {
+			notifyPost := post
+			if notifyPost.SourceChannel == "" {
+				notifyPost.SourceChannel = source
+			}
+			if err := a.webhook.Notify(ctx, notifyPost); err != nil {
+				a.log.Warn("matcher webhook failed",
+					zap.Int("message_id", post.MessageID),
+					zap.Error(err),
+				)
+			}
+		}
 
 		time.Sleep(1500 * time.Millisecond)
 	}

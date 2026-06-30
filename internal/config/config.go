@@ -22,6 +22,8 @@ type TelegramConfig struct {
 	Sources     []string `yaml:"sources"`
 	MatcherBot  string   `yaml:"matcher_bot"`
 	PlatformURL string   `yaml:"platform_url"`
+	MatcherURL  string   `yaml:"matcher_url"`
+	IngestSecret string  `yaml:"ingest_secret"`
 }
 
 type AppConfig struct {
@@ -83,6 +85,12 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("PLATFORM_URL"); v != "" {
 		c.Telegram.PlatformURL = v
+	}
+	if v := os.Getenv("MATCHER_URL"); v != "" {
+		c.Telegram.MatcherURL = v
+	}
+	if v := os.Getenv("INGEST_SECRET"); v != "" {
+		c.Telegram.IngestSecret = v
 	}
 	if v := os.Getenv("DATA_DIR"); v != "" {
 		c.App.DataDir = v
