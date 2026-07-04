@@ -112,18 +112,25 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) {
 		s.log.Info("outreach daily limit reached", zap.Int("limit", s.cfg.DailyLimit))
 		return
 	}
+	if !s.store.CanSendNow(s.cfg.Delay) {
+		s.log.Info("outreach cooldown", zap.Duration("delay", s.cfg.Delay))
+		return
+	}
 
 	text := strings.TrimSpace(post.Text)
 	if text == "" {
 		text = strings.TrimSpace(post.Caption)
 	}
-	targets := ExtractTargets(text, s.skip)
+	targets := ExtractTargets(text)
 	if len(targets) == 0 {
 		return
 	}
 
 	for _, target := range targets {
 		if !s.store.CanSendToday(s.cfg.DailyLimit) {
+			return
+		}
+		if !s.store.CanSendNow(s.cfg.Delay) {
 			return
 		}
 		if s.store.WasContacted(target.Key) {
@@ -157,8 +164,6 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) {
 			zap.Int("message_id", post.MessageID),
 			zap.Int("daily_sent", s.store.DailySent()),
 		)
-
-		time.Sleep(s.cfg.Delay)
 		return
 	}
 }

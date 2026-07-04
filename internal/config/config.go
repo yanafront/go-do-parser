@@ -184,7 +184,7 @@ func (c *Config) setDefaults() {
 		c.Outreach.DailyLimit = 5
 	}
 	if c.Outreach.Delay == 0 {
-		c.Outreach.Delay = 45 * time.Second
+		c.Outreach.Delay = 10 * time.Minute
 	}
 }
 

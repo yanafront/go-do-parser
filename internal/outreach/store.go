@@ -24,8 +24,9 @@ type Store struct {
 }
 
 type diskState struct {
-	Contacted map[string]Record `json:"contacted"`
-	Daily     map[string]int    `json:"daily"`
+	Contacted  map[string]Record `json:"contacted"`
+	Daily      map[string]int    `json:"daily"`
+	LastSentAt string            `json:"last_sent_at"`
 }
 
 func OpenStore(dataDir string) (*Store, error) {
@@ -112,12 +113,27 @@ func (s *Store) CanSendToday(limit int) bool {
 	return s.DailySent() < limit
 }
 
+func (s *Store) CanSendNow(minDelay time.Duration) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensure()
+	if s.data.LastSentAt == "" {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339, s.data.LastSentAt)
+	if err != nil {
+		return true
+	}
+	return time.Since(t) >= minDelay
+}
+
 func (s *Store) MarkSent(key string, rec Record) error {
 	s.mu.Lock()
 	s.ensure()
 	s.data.Contacted[key] = rec
 	day := todayKey()
 	s.data.Daily[day]++
+	s.data.LastSentAt = time.Now().UTC().Format(time.RFC3339)
 	s.mu.Unlock()
 	return s.save()
 }
