@@ -263,6 +263,10 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 			continue
 		}
 
+		if telegram.IsBlocked(post) {
+			continue
+		}
+
 		if !telegram.HasContact(post) {
 			continue
 		}

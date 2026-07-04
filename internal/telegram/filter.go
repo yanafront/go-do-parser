@@ -30,6 +30,11 @@ func HasContact(post Post) bool {
 	return false
 }
 
+func IsBlocked(post Post) bool {
+	text := strings.ToLower(postText(post))
+	return strings.Contains(text, "заблокирован") || strings.Contains(text, "внимание")
+}
+
 func postText(post Post) string {
 	text := strings.TrimSpace(post.Text)
 	if text == "" {
