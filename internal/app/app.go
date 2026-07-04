@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/anadubesko/go-do-parser/internal/config"
+	"github.com/anadubesko/go-do-parser/internal/outreach"
 	"github.com/anadubesko/go-do-parser/internal/store"
 	"github.com/anadubesko/go-do-parser/internal/telegram"
 	"github.com/anadubesko/go-do-parser/internal/webhook"
@@ -20,6 +21,8 @@ type App struct {
 	reader    *telegram.Reader
 	publisher *telegram.Publisher
 	webhook   *webhook.Client
+	outreach  *outreach.Service
+	outStore  *outreach.Store
 	log       *zap.Logger
 }
 
@@ -74,33 +77,77 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		log,
 	)
 
-	return &App{
+	app := &App{
 		cfg:       cfg,
 		store:     st,
 		reader:    reader,
 		publisher: publisher,
 		webhook:   webhook.New(cfg.Telegram.MatcherURL, cfg.Telegram.IngestSecret),
 		log:       log,
-	}, nil
+	}
+
+	if cfg.Outreach.Enabled() {
+		outStore, err := outreach.OpenStore(cfg.Outreach.DataDir)
+		if err != nil {
+			st.Close()
+			return nil, err
+		}
+		skip := outreach.BuildSkipList(cfg.Telegram.Sources, cfg.Telegram.Destination, cfg.Telegram.MatcherBot)
+		app.outStore = outStore
+		app.outreach = outreach.NewService(cfg.Outreach, cfg.Telegram.APIID, cfg.Telegram.APIHash, outStore, skip, log)
+		log.Info("outreach enabled",
+			zap.String("phone", telegram.MaskPhone(cfg.Outreach.Phone)),
+			zap.Int("daily_limit", cfg.Outreach.DailyLimit),
+			zap.Duration("delay", cfg.Outreach.Delay),
+			zap.String("store", outStore.Path()),
+		)
+	}
+
+	return app, nil
 }
 
 func (a *App) Run(ctx context.Context) error {
 	defer a.store.Close()
+	if a.outStore != nil {
+		defer a.outStore.Close()
+	}
 
 	ready := make(chan struct{})
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 
 	go func() {
 		errCh <- a.reader.Connect(ctx, ready)
 	}()
 
-	select {
-	case <-ready:
-		a.log.Info("telegram reader connected")
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errCh:
-		return err
+	var outreachReadyCh <-chan struct{}
+	if a.outreach != nil {
+		go func() {
+			errCh <- a.outreach.Connect(ctx)
+		}()
+		outreachReadyCh = a.outreach.Ready()
+	}
+
+	readerReady := false
+	outreachReady := a.outreach == nil
+	for !(readerReady && outreachReady) {
+		select {
+		case <-ready:
+			if !readerReady {
+				readerReady = true
+				a.log.Info("telegram reader connected")
+			}
+		case <-outreachReadyCh:
+			if !outreachReady {
+				outreachReady = true
+				a.log.Info("outreach connected")
+			}
+		case err := <-errCh:
+			if err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	if err := a.syncOnce(ctx); err != nil {
@@ -255,6 +302,15 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 					zap.Error(err),
 				)
 			}
+		}
+
+		if a.outreach != nil {
+			a.outreach.HandlePost(ctx, outreach.PostInfo{
+				SourceChannel: source,
+				MessageID:     post.MessageID,
+				Text:          post.Text,
+				Caption:       post.Caption,
+			})
 		}
 
 		time.Sleep(1500 * time.Millisecond)

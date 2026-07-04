@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -10,6 +11,7 @@ import (
 
 type Config struct {
 	Telegram TelegramConfig `yaml:"telegram"`
+	Outreach OutreachConfig `yaml:"outreach"`
 	App      AppConfig      `yaml:"app"`
 }
 
@@ -24,6 +26,19 @@ type TelegramConfig struct {
 	PlatformURL string   `yaml:"platform_url"`
 	MatcherURL  string   `yaml:"matcher_url"`
 	IngestSecret string  `yaml:"ingest_secret"`
+}
+
+type OutreachConfig struct {
+	Phone      string
+	Session    string
+	Message    string
+	DailyLimit int
+	Delay      time.Duration
+	DataDir    string
+}
+
+func (c OutreachConfig) Enabled() bool {
+	return strings.TrimSpace(c.Phone) != "" && strings.TrimSpace(c.Message) != ""
 }
 
 type AppConfig struct {
@@ -118,6 +133,29 @@ func (c *Config) applyEnv() {
 			c.App.PlatformEvery = n
 		}
 	}
+	if v := os.Getenv("OUTREACH_PHONE"); v != "" {
+		c.Outreach.Phone = v
+	}
+	if v := os.Getenv("OUTREACH_SESSION"); v != "" {
+		c.Outreach.Session = v
+	}
+	if v := os.Getenv("OUTREACH_MESSAGE"); v != "" {
+		c.Outreach.Message = v
+	}
+	if v := os.Getenv("OUTREACH_DATA_DIR"); v != "" {
+		c.Outreach.DataDir = v
+	}
+	if v := os.Getenv("OUTREACH_DAILY_LIMIT"); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
+			c.Outreach.DailyLimit = n
+		}
+	}
+	if v := os.Getenv("OUTREACH_DELAY"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			c.Outreach.Delay = d
+		}
+	}
 }
 
 func (c *Config) setDefaults() {
@@ -138,6 +176,15 @@ func (c *Config) setDefaults() {
 	}
 	if c.Telegram.PlatformURL == "" {
 		c.Telegram.PlatformURL = "https://platform.alcan.by/"
+	}
+	if c.Outreach.DataDir == "" {
+		c.Outreach.DataDir = c.App.DataDir + "/outreach"
+	}
+	if c.Outreach.DailyLimit == 0 {
+		c.Outreach.DailyLimit = 5
+	}
+	if c.Outreach.Delay == 0 {
+		c.Outreach.Delay = 45 * time.Second
 	}
 }
 
