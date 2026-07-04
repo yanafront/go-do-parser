@@ -335,7 +335,7 @@ func (a *App) publishPost(ctx context.Context, post telegram.Post) (int, error) 
 
 	total := a.store.TotalPublished()
 	nextNum := total + 1
-	showMatcher := a.cfg.Telegram.MatcherBot != "" && nextNum%a.cfg.App.PromoEvery == 0
+	showMatcher := false
 	showPlatform := a.cfg.Telegram.PlatformURL != "" && nextNum%a.cfg.App.PlatformEvery == 0
 	if showMatcher || showPlatform {
 		a.log.Info("promo button",
