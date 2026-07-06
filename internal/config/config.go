@@ -140,7 +140,9 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("INGEST_SECRET"); v != "" {
 		c.Telegram.IngestSecret = v
 	}
-	if v := os.Getenv("DATABASE_URL"); v != "" {
+	if v := os.Getenv("DATABASE_PRIVATE_URL"); v != "" {
+		c.Database.URL = v
+	} else if v := os.Getenv("DATABASE_URL"); v != "" {
 		c.Database.URL = v
 	}
 	if v := os.Getenv("DATA_DIR"); v != "" {

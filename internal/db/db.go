@@ -55,16 +55,17 @@ func Open(databaseURL string) (*DB, error) {
 
 func normalizeDatabaseURL(raw string) string {
 	raw = strings.TrimSpace(raw)
-	if raw == "" {
+	if raw == "" || strings.Contains(raw, "sslmode=") {
 		return raw
 	}
-	if strings.Contains(raw, "sslmode=") {
-		return raw
-	}
+	sep := "?"
 	if strings.Contains(raw, "?") {
-		return raw + "&sslmode=require"
+		sep = "&"
 	}
-	return raw + "?sslmode=require"
+	if strings.Contains(raw, "railway.internal") {
+		return raw + sep + "sslmode=disable"
+	}
+	return raw + sep + "sslmode=require"
 }
 
 func (db *DB) Close() error {

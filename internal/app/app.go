@@ -93,16 +93,7 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 	}
 
 	if cfg.Database.Enabled() {
-		database, err := db.Open(cfg.Database.URL)
-		if err != nil {
-			log.Warn("database unavailable, continuing without db",
-				zap.Error(err),
-				zap.String("hint", "in Railway: go-do-parser → Variables → Add Reference → Postgres → DATABASE_URL"),
-			)
-		} else {
-			app.db = database
-			log.Info("database connected")
-		}
+		app.tryConnectDB(log)
 	}
 
 	if cfg.MessengerEnabled() {
@@ -220,6 +211,8 @@ func (a *App) Run(ctx context.Context) error {
 	if err := a.syncOnce(ctx); err != nil {
 		a.log.Warn("initial sync error", zap.Error(err))
 	}
+
+	go a.dbReconnectLoop(ctx)
 
 	ticker := time.NewTicker(a.cfg.App.PollInterval)
 	defer ticker.Stop()
@@ -440,6 +433,41 @@ func (a *App) publishPost(ctx context.Context, post telegram.Post) (int, error) 
 	return a.publisher.Publish(post, mediaPath, showMatcher, showPlatform)
 }
 
+func (a *App) tryConnectDB(log *zap.Logger) {
+	if !a.cfg.Database.Enabled() || a.db != nil {
+		return
+	}
+	database, err := db.Open(a.cfg.Database.URL)
+	if err != nil {
+		log.Warn("database unavailable, continuing without db",
+			zap.Error(err),
+			zap.String("hint", "Railway: go-do-parser → Variables → Add Reference → Postgres → DATABASE_URL"),
+		)
+		return
+	}
+	a.db = database
+	log.Info("database connected")
+}
+
+func (a *App) dbReconnectLoop(ctx context.Context) {
+	if !a.cfg.Database.Enabled() {
+		return
+	}
+	ticker := time.NewTicker(2 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if a.db != nil {
+				continue
+			}
+			a.tryConnectDB(a.log)
+		}
+	}
+}
+
 func (a *App) saveVacancy(ctx context.Context, sourceChannel string, messageID, destID int, body string) {
 	if a.db == nil {
 		return
@@ -459,7 +487,12 @@ func (a *App) saveVacancy(ctx context.Context, sourceChannel string, messageID, 
 			zap.Int("message_id", messageID),
 			zap.Error(err),
 		)
+		return
 	}
+	a.log.Info("vacancy saved",
+		zap.String("source", sourceChannel),
+		zap.Int("message_id", messageID),
+	)
 }
 
 func (a *App) updateVacancyDM(ctx context.Context, sourceChannel string, messageID int, target outreach.Target) {
@@ -494,7 +527,12 @@ func (a *App) saveJobSeekerPost(ctx context.Context, sourceChannel string, messa
 			zap.Int("message_id", messageID),
 			zap.Error(err),
 		)
+		return
 	}
+	a.log.Info("job seeker post saved",
+		zap.String("source", sourceChannel),
+		zap.Int("message_id", messageID),
+	)
 }
 
 func (a *App) updateJobSeekerDM(ctx context.Context, sourceChannel string, messageID int, target outreach.Target) {
