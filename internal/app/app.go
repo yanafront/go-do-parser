@@ -93,8 +93,11 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		log:         log,
 	}
 
-	if cfg.Database.Enabled() {
+	if dbURL := resolveDatabaseURL(cfg); dbURL != "" {
+		cfg.Database.URL = dbURL
 		app.tryConnectDB(log)
+	} else {
+		log.Info("database not configured")
 	}
 
 	if cfg.MessengerEnabled() {
@@ -434,17 +437,27 @@ func (a *App) publishPost(ctx context.Context, post telegram.Post) (int, error) 
 	return a.publisher.Publish(post, mediaPath, showMatcher, showPlatform)
 }
 
+func resolveDatabaseURL(cfg *config.Config) string {
+	if u := strings.TrimSpace(os.Getenv("DATABASE_PRIVATE_URL")); u != "" {
+		return u
+	}
+	if u := strings.TrimSpace(os.Getenv("DATABASE_URL")); u != "" {
+		return u
+	}
+	if u := strings.TrimSpace(cfg.Database.URL); u != "" {
+		return u
+	}
+	return db.ResolveURL()
+}
+
 func (a *App) tryConnectDB(log *zap.Logger) {
-	if !a.cfg.Database.Enabled() || a.db != nil {
+	if a.db != nil {
 		return
 	}
-	connURL := a.cfg.Database.URL
-	if strings.TrimSpace(connURL) == "" {
-		connURL = db.ResolveURL()
-	}
+	connURL := resolveDatabaseURL(a.cfg)
 	if strings.TrimSpace(connURL) == "" {
 		log.Warn("database url is empty",
-			zap.String("hint", "Railway: go-do-parser → Variables → Add Reference → Postgres → DATABASE_URL"),
+			zap.String("hint", "Railway: go-do-parser → Variables → DATABASE_URL = ${{ Postgres.DATABASE_URL }}"),
 		)
 		return
 	}
@@ -453,16 +466,25 @@ func (a *App) tryConnectDB(log *zap.Logger) {
 		log.Warn("database unavailable, continuing without db",
 			zap.Error(err),
 			zap.String("host", db.MaskURL(connURL)),
-			zap.String("hint", "Railway: go-do-parser → Variables → Add Reference → Postgres → DATABASE_URL"),
+			zap.String("hint", "Railway: go-do-parser → Variables → DATABASE_URL = ${{ Postgres.DATABASE_URL }}"),
 		)
 		return
 	}
 	a.db = database
+	a.cfg.Database.URL = connURL
 	log.Info("database connected", zap.String("host", db.MaskURL(connURL)))
 }
 
+func (a *App) ensureDB() bool {
+	if a.db != nil {
+		return true
+	}
+	a.tryConnectDB(a.log)
+	return a.db != nil
+}
+
 func (a *App) dbReconnectLoop(ctx context.Context) {
-	if !a.cfg.Database.Enabled() {
+	if resolveDatabaseURL(a.cfg) == "" {
 		return
 	}
 	ticker := time.NewTicker(2 * time.Minute)
@@ -481,7 +503,11 @@ func (a *App) dbReconnectLoop(ctx context.Context) {
 }
 
 func (a *App) saveVacancy(ctx context.Context, sourceChannel string, messageID, destID int, body string) {
-	if a.db == nil {
+	if !a.ensureDB() {
+		a.log.Warn("vacancy not saved: database not connected",
+			zap.String("source", sourceChannel),
+			zap.Int("message_id", messageID),
+		)
 		return
 	}
 	adUser, adPhone := outreach.ExtractAdContacts(body, a.contactSkip)
@@ -522,7 +548,7 @@ func (a *App) updateVacancyDM(ctx context.Context, sourceChannel string, message
 }
 
 func (a *App) saveJobSeekerPost(ctx context.Context, sourceChannel string, messageID int, body string) {
-	if a.db == nil {
+	if !a.ensureDB() {
 		return
 	}
 	poster, adUser, adPhone := outreach.ExtractSeekerContacts(body, a.contactSkip)

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -144,6 +145,9 @@ func (c *Config) applyEnv() {
 		c.Database.URL = v
 	} else if v := os.Getenv("DATABASE_URL"); v != "" {
 		c.Database.URL = v
+	}
+	if c.Database.URL == "" {
+		c.Database.URL = postgresURLFromEnv()
 	}
 	if v := os.Getenv("DATA_DIR"); v != "" {
 		c.App.DataDir = v
@@ -317,4 +321,28 @@ func trimSpace(s string) string {
 
 func unescapeEnv(s string) string {
 	return strings.NewReplacer("\\n", "\n", "\\t", "\t").Replace(s)
+}
+
+func postgresURLFromEnv() string {
+	host := strings.TrimSpace(os.Getenv("PGHOST"))
+	user := strings.TrimSpace(os.Getenv("PGUSER"))
+	password := os.Getenv("PGPASSWORD")
+	dbname := strings.TrimSpace(os.Getenv("PGDATABASE"))
+	port := strings.TrimSpace(os.Getenv("PGPORT"))
+	if host == "" || user == "" {
+		return ""
+	}
+	if dbname == "" {
+		dbname = "railway"
+	}
+	if port == "" {
+		port = "5432"
+	}
+	u := &url.URL{
+		Scheme: "postgresql",
+		User:   url.UserPassword(user, password),
+		Host:   host + ":" + port,
+		Path:   dbname,
+	}
+	return u.String()
 }
