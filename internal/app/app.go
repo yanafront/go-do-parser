@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/anadubesko/go-do-parser/internal/config"
@@ -437,16 +438,27 @@ func (a *App) tryConnectDB(log *zap.Logger) {
 	if !a.cfg.Database.Enabled() || a.db != nil {
 		return
 	}
-	database, err := db.Open(a.cfg.Database.URL)
+	connURL := a.cfg.Database.URL
+	if strings.TrimSpace(connURL) == "" {
+		connURL = db.ResolveURL()
+	}
+	if strings.TrimSpace(connURL) == "" {
+		log.Warn("database url is empty",
+			zap.String("hint", "Railway: go-do-parser → Variables → Add Reference → Postgres → DATABASE_URL"),
+		)
+		return
+	}
+	database, err := db.Open(connURL)
 	if err != nil {
 		log.Warn("database unavailable, continuing without db",
 			zap.Error(err),
+			zap.String("host", db.MaskURL(connURL)),
 			zap.String("hint", "Railway: go-do-parser → Variables → Add Reference → Postgres → DATABASE_URL"),
 		)
 		return
 	}
 	a.db = database
-	log.Info("database connected")
+	log.Info("database connected", zap.String("host", db.MaskURL(connURL)))
 }
 
 func (a *App) dbReconnectLoop(ctx context.Context) {

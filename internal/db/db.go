@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -14,58 +16,135 @@ type DB struct {
 	sql *sql.DB
 }
 
-func Open(databaseURL string) (*DB, error) {
-	databaseURL = normalizeDatabaseURL(databaseURL)
-
-	sqlDB, err := sql.Open("pgx", databaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+func ResolveURL() string {
+	if v := strings.TrimSpace(os.Getenv("DATABASE_PRIVATE_URL")); v != "" {
+		return v
 	}
-	sqlDB.SetMaxOpenConns(5)
-	sqlDB.SetMaxIdleConns(2)
-	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	if v := strings.TrimSpace(os.Getenv("DATABASE_URL")); v != "" {
+		return v
+	}
+	host := strings.TrimSpace(os.Getenv("PGHOST"))
+	user := strings.TrimSpace(os.Getenv("PGUSER"))
+	password := os.Getenv("PGPASSWORD")
+	dbname := strings.TrimSpace(os.Getenv("PGDATABASE"))
+	port := strings.TrimSpace(os.Getenv("PGPORT"))
+	if host == "" || user == "" {
+		return ""
+	}
+	if dbname == "" {
+		dbname = "railway"
+	}
+	if port == "" {
+		port = "5432"
+	}
+	u := &url.URL{
+		Scheme: "postgresql",
+		User:   url.UserPassword(user, password),
+		Host:   host + ":" + port,
+		Path:   dbname,
+	}
+	return u.String()
+}
+
+func Open(databaseURL string) (*DB, error) {
+	databaseURL = strings.TrimSpace(databaseURL)
+	if databaseURL == "" {
+		return nil, fmt.Errorf("database url is empty")
+	}
 
 	var lastErr error
-	for attempt := 1; attempt <= 5; attempt++ {
+	for _, connURL := range connectionVariants(databaseURL) {
+		sqlDB, err := sql.Open("pgx", connURL)
+		if err != nil {
+			lastErr = fmt.Errorf("%s: %w", MaskURL(connURL), err)
+			continue
+		}
+		sqlDB.SetMaxOpenConns(5)
+		sqlDB.SetMaxIdleConns(2)
+		sqlDB.SetConnMaxLifetime(30 * time.Minute)
+
+		if err := pingWithRetry(sqlDB, 3); err != nil {
+			lastErr = fmt.Errorf("%s: %w", MaskURL(connURL), err)
+			sqlDB.Close()
+			continue
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		db := &DB{sql: sqlDB}
+		err = db.Migrate(ctx)
+		cancel()
+		if err != nil {
+			sqlDB.Close()
+			lastErr = err
+			continue
+		}
+		return db, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no connection variants")
+	}
+	return nil, fmt.Errorf("ping database: %w", lastErr)
+}
+
+func pingWithRetry(sqlDB *sql.DB, attempts int) error {
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		lastErr = sqlDB.PingContext(ctx)
 		cancel()
 		if lastErr == nil {
-			break
+			return nil
 		}
-		if attempt < 5 {
-			time.Sleep(3 * time.Second)
+		if attempt < attempts {
+			time.Sleep(2 * time.Second)
 		}
 	}
-	if lastErr != nil {
-		sqlDB.Close()
-		return nil, fmt.Errorf("ping database: %w", lastErr)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	db := &DB{sql: sqlDB}
-	if err := db.Migrate(ctx); err != nil {
-		sqlDB.Close()
-		return nil, err
-	}
-	return db, nil
+	return lastErr
 }
 
-func normalizeDatabaseURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || strings.Contains(raw, "sslmode=") {
+func connectionVariants(raw string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" || seen[s] {
+			return
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+
+	add(raw)
+	if !strings.Contains(raw, "sslmode=") {
+		add(withQueryParam(raw, "sslmode", "disable"))
+		add(withQueryParam(raw, "sslmode", "require"))
+		add(withQueryParam(raw, "sslmode", "prefer"))
+	}
+	return out
+}
+
+func withQueryParam(raw, key, value string) string {
+	if strings.Contains(raw, key+"=") {
 		return raw
 	}
 	sep := "?"
 	if strings.Contains(raw, "?") {
 		sep = "&"
 	}
-	if strings.Contains(raw, "railway.internal") {
-		return raw + sep + "sslmode=disable"
+	return raw + sep + key + "=" + value
+}
+
+func MaskURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "invalid database url"
 	}
-	return raw + sep + "sslmode=require"
+	if u.User != nil {
+		if name := u.User.Username(); name != "" {
+			u.User = url.UserPassword(name, "***")
+		}
+	}
+	return u.Redacted()
 }
 
 func (db *DB) Close() error {
