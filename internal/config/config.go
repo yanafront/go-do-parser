@@ -72,7 +72,11 @@ func (c SeekerConfig) Enabled() bool {
 }
 
 func (c *Config) MessengerEnabled() bool {
-	return strings.TrimSpace(c.Outreach.Phone) != "" && (c.Outreach.Enabled() || c.Seeker.Enabled())
+	phone := strings.TrimSpace(c.Outreach.Phone)
+	if phone == "" {
+		phone = strings.TrimSpace(c.Telegram.Phone)
+	}
+	return phone != "" && (c.Outreach.Enabled() || c.Seeker.Enabled())
 }
 
 type AppConfig struct {
@@ -259,6 +263,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.Seeker.Delay == 0 {
 		c.Seeker.Delay = 10 * time.Minute
+	}
+	if c.Seeker.Enabled() && strings.TrimSpace(c.Outreach.Phone) == "" {
+		c.Outreach.Phone = c.Telegram.Phone
 	}
 }
 

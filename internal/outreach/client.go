@@ -20,9 +20,10 @@ import (
 )
 
 type Service struct {
-	phone       string
-	dataDir     string
-	employerCfg config.OutreachConfig
+	phone         string
+	dataDir       string
+	parserDataDir string
+	employerCfg   config.OutreachConfig
 	seekerCfg   config.SeekerConfig
 	apiID       int
 	apiHash     string
@@ -53,7 +54,7 @@ type PostInfo struct {
 }
 
 func NewService(
-	phone, dataDir string,
+	phone, dataDir, parserDataDir string,
 	employerCfg config.OutreachConfig,
 	seekerCfg config.SeekerConfig,
 	apiID int,
@@ -65,6 +66,7 @@ func NewService(
 	return &Service{
 		phone:         phone,
 		dataDir:       dataDir,
+		parserDataDir: parserDataDir,
 		employerCfg:   employerCfg,
 		seekerCfg:     seekerCfg,
 		apiID:         apiID,
@@ -80,16 +82,9 @@ func NewService(
 }
 
 func (s *Service) Connect(ctx context.Context) error {
-	sessionPath, err := telegram.PrepareOutreachSession(s.dataDir)
+	sessionPath, err := s.resolveSessionPath()
 	if err != nil {
 		return err
-	}
-	if os.Getenv("OUTREACH_SESSION") != "" {
-		s.log.Info("outreach session restored from OUTREACH_SESSION")
-	} else if _, err := os.Stat(sessionPath); err == nil {
-		s.log.Info("outreach session loaded from disk", zap.String("path", sessionPath))
-	} else {
-		return fmt.Errorf("outreach session not found: set OUTREACH_SESSION or login with OUTREACH_PHONE")
 	}
 
 	s.client = gotdtelegram.NewClient(s.apiID, s.apiHash, gotdtelegram.Options{
@@ -100,7 +95,7 @@ func (s *Service) Connect(ctx context.Context) error {
 		flow := auth.NewFlow(
 			constantAuthenticator(
 				telegram.NormalizePhone(s.phone),
-				strings.TrimSpace(os.Getenv("OUTREACH_AUTH_PASSWORD")),
+				s.authPassword(),
 			),
 			auth.SendCodeOptions{},
 		)
@@ -209,11 +204,19 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 	}
 
 	text := postText(post)
-	target, ok := ExtractUsername(text, s.skip)
+	target, ok := ExtractSeekerTarget(text, s.skip)
 	if !ok {
+		s.log.Info("seeker skipped: no contact in post",
+			zap.String("source", post.SourceChannel),
+			zap.Int("message_id", post.MessageID),
+		)
 		return nil
 	}
 	if s.seekerStore.WasContacted(target.Key) {
+		s.log.Info("seeker skipped: already contacted",
+			zap.String("target", target.Raw),
+			zap.String("type", target.Type),
+		)
 		return nil
 	}
 
@@ -366,11 +369,49 @@ func randomID() (int64, error) {
 	return id, nil
 }
 
+func (s *Service) resolveSessionPath() (string, error) {
+	sessionPath, err := telegram.PrepareOutreachSession(s.dataDir)
+	if err != nil {
+		return "", err
+	}
+	if os.Getenv("OUTREACH_SESSION") != "" {
+		s.log.Info("messenger session from OUTREACH_SESSION")
+		return sessionPath, nil
+	}
+	if _, err := os.Stat(sessionPath); err == nil {
+		s.log.Info("messenger session from outreach disk", zap.String("path", sessionPath))
+		return sessionPath, nil
+	}
+	parserPath, err := telegram.PrepareParserSession(s.parserDataDir)
+	if err != nil {
+		return "", err
+	}
+	if os.Getenv("TG_SESSION") != "" {
+		s.log.Info("messenger session from TG_SESSION")
+		return parserPath, nil
+	}
+	if telegram.ParserSessionExists(s.parserDataDir) {
+		s.log.Info("messenger session from parser disk", zap.String("path", parserPath))
+		return parserPath, nil
+	}
+	return "", fmt.Errorf("messenger session not found: set OUTREACH_SESSION or TG_SESSION")
+}
+
+func (s *Service) authPassword() string {
+	if v := strings.TrimSpace(os.Getenv("OUTREACH_AUTH_PASSWORD")); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("TG_AUTH_PASSWORD"))
+}
+
 func constantAuthenticator(phone, password string) auth.UserAuthenticator {
 	return auth.Constant(phone, password, auth.CodeAuthenticatorFunc(func(ctx context.Context, sentCode *tg.AuthSentCode) (string, error) {
 		if v := strings.TrimSpace(os.Getenv("OUTREACH_AUTH_CODE")); v != "" {
 			return v, nil
 		}
-		return "", fmt.Errorf("OUTREACH session expired: login locally and update OUTREACH_SESSION")
+		if v := strings.TrimSpace(os.Getenv("TG_AUTH_CODE")); v != "" {
+			return v, nil
+		}
+		return "", fmt.Errorf("messenger session expired: update OUTREACH_SESSION or TG_SESSION")
 	}))
 }

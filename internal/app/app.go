@@ -127,6 +127,7 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		app.outreach = outreach.NewService(
 			cfg.Outreach.Phone,
 			cfg.Outreach.DataDir,
+			cfg.App.DataDir,
 			cfg.Outreach,
 			cfg.Seeker,
 			cfg.Telegram.APIID,
@@ -154,6 +155,11 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 				zap.String("store", app.seekerStore.Path()),
 			)
 		}
+	} else if cfg.Seeker.ExplicitlyEnabled {
+		log.Warn("seeker enabled but messenger not started",
+			zap.Bool("seeker_message_set", strings.TrimSpace(cfg.Seeker.Message) != ""),
+			zap.String("hint", "set SEEKER_MESSAGE and TG_PHONE+TG_SESSION or OUTREACH_PHONE+OUTREACH_SESSION"),
+		)
 	}
 
 	return app, nil
@@ -341,6 +347,11 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 				}); target != nil {
 					a.updateJobSeekerDM(ctx, channelKeyNorm, post.MessageID, *target)
 				}
+			} else if a.cfg.Seeker.ExplicitlyEnabled {
+				a.log.Warn("seeker post skipped: messenger not running",
+					zap.String("source", source),
+					zap.Int("message_id", post.MessageID),
+				)
 			}
 		}
 

@@ -8,8 +8,16 @@ import (
 	"strings"
 )
 
+func PrepareParserSession(dataDir string) (sessionPath string, err error) {
+	return prepareSession(dataDir)
+}
+
 func prepareSession(dataDir string) (sessionPath string, err error) {
 	return prepareSessionFromEnv(dataDir, "TG_SESSION", "session.json")
+}
+
+func ParserSessionExists(dataDir string) bool {
+	return sessionExists(filepath.Join(dataDir, "session.json"))
 }
 
 func PrepareOutreachSession(dataDir string) (sessionPath string, err error) {

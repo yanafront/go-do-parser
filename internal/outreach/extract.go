@@ -80,6 +80,16 @@ func ExtractSeekerContacts(text string, skip map[string]bool) (poster, adUser, a
 	return poster, adUser, adPhone
 }
 
+func ExtractSeekerTarget(text string, skip map[string]bool) (Target, bool) {
+	if u, ok := ExtractUsername(text, skip); ok {
+		return u, true
+	}
+	for _, t := range ExtractTargets(text) {
+		return t, true
+	}
+	return Target{}, false
+}
+
 func ExtractUsername(text string, skip map[string]bool) (Target, bool) {
 	text = strings.TrimSpace(text)
 	if text == "" {
