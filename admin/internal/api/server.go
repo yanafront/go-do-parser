@@ -29,6 +29,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.Handle("GET /api/stats", s.authRequired(http.HandlerFunc(s.handleStats)))
+	mux.Handle("GET /api/channels", s.authRequired(http.HandlerFunc(s.handleChannels)))
 	mux.Handle("GET /api/vacancies", s.authRequired(http.HandlerFunc(s.handleVacancies)))
 	mux.Handle("GET /api/job-seekers", s.authRequired(http.HandlerFunc(s.handleJobSeekers)))
 
@@ -76,9 +77,33 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
+	kind := strings.TrimSpace(r.URL.Query().Get("type"))
+	var channels []string
+	var err error
+	switch kind {
+	case "vacancies":
+		channels, err = s.db.ListVacancyChannels(r.Context())
+	case "seekers":
+		channels, err = s.db.ListJobSeekerChannels(r.Context())
+	default:
+		writeError(w, http.StatusBadRequest, "invalid type")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	if channels == nil {
+		channels = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"channels": channels})
+}
+
 func (s *Server) handleVacancies(w http.ResponseWriter, r *http.Request) {
 	limit, offset := pageParams(r)
-	items, total, err := s.db.ListVacancies(r.Context(), limit, offset)
+	filter := listFilterParams(r)
+	items, total, err := s.db.ListVacancies(r.Context(), filter, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
@@ -88,7 +113,8 @@ func (s *Server) handleVacancies(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleJobSeekers(w http.ResponseWriter, r *http.Request) {
 	limit, offset := pageParams(r)
-	items, total, err := s.db.ListJobSeekers(r.Context(), limit, offset)
+	filter := listFilterParams(r)
+	items, total, err := s.db.ListJobSeekers(r.Context(), filter, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
@@ -117,6 +143,17 @@ func bearerToken(r *http.Request) string {
 		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 	}
 	return ""
+}
+
+func listFilterParams(r *http.Request) db.ListFilter {
+	q := r.URL.Query()
+	return db.ListFilter{
+		Search:   strings.TrimSpace(q.Get("q")),
+		Channel:  strings.TrimSpace(q.Get("channel")),
+		HasDM:    strings.TrimSpace(q.Get("has_dm")),
+		DateFrom: strings.TrimSpace(q.Get("date_from")),
+		DateTo:   strings.TrimSpace(q.Get("date_to")),
+	}
 }
 
 func pageParams(r *http.Request) (limit, offset int) {

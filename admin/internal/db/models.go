@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -58,25 +59,32 @@ SELECT
 	return s, nil
 }
 
-func (db *DB) ListVacancies(ctx context.Context, limit, offset int) ([]Vacancy, int64, error) {
+func (db *DB) ListVacancies(ctx context.Context, filter ListFilter, limit, offset int) ([]Vacancy, int64, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
 	}
+	where, args, nextArg := filter.vacancyWhere(1)
+
 	var total int64
-	if err := db.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM vacancies`).Scan(&total); err != nil {
+	countQuery := "SELECT COUNT(*) FROM vacancies " + where
+	if err := db.sql.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := db.sql.QueryContext(ctx, `
+
+	listQuery := fmt.Sprintf(`
 SELECT id, source_channel, source_message_id, dest_message_id, body,
        ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at,
        published_at, created_at
 FROM vacancies
+%s
 ORDER BY created_at DESC
-LIMIT $1 OFFSET $2
-`, limit, offset)
+LIMIT $%d OFFSET $%d
+`, where, nextArg, nextArg+1)
+	listArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.sql.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -97,24 +105,31 @@ LIMIT $1 OFFSET $2
 	return out, total, rows.Err()
 }
 
-func (db *DB) ListJobSeekers(ctx context.Context, limit, offset int) ([]JobSeekerPost, int64, error) {
+func (db *DB) ListJobSeekers(ctx context.Context, filter ListFilter, limit, offset int) ([]JobSeekerPost, int64, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
 	}
+	where, args, nextArg := filter.jobSeekerWhere(1)
+
 	var total int64
-	if err := db.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM job_seeker_posts`).Scan(&total); err != nil {
+	countQuery := "SELECT COUNT(*) FROM job_seeker_posts " + where
+	if err := db.sql.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := db.sql.QueryContext(ctx, `
+
+	listQuery := fmt.Sprintf(`
 SELECT id, source_channel, source_message_id, body,
        poster_username, ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, created_at
 FROM job_seeker_posts
+%s
 ORDER BY created_at DESC
-LIMIT $1 OFFSET $2
-`, limit, offset)
+LIMIT $%d OFFSET $%d
+`, where, nextArg, nextArg+1)
+	listArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.sql.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

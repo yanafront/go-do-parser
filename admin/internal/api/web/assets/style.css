@@ -32,8 +32,18 @@ input {
   background: #000;
   color: #e7e9ea;
   font-size: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
+select {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #2f3336;
+  background: #000;
+  color: #e7e9ea;
+  font-size: 15px;
+}
+.login-card input { margin-bottom: 16px; }
 button, .tab {
   border: none;
   border-radius: 999px;
@@ -43,7 +53,33 @@ button, .tab {
   cursor: pointer;
 }
 button.primary { background: #1d9bf0; color: #fff; width: 100%; }
+button.primary.compact { width: auto; }
+button.compact { padding: 10px 16px; }
 button.ghost { background: transparent; color: #e7e9ea; border: 1px solid #2f3336; }
+.table-card { margin-top: 16px; }
+.filters {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #2f3336;
+}
+.filters-row {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  color: #71767b;
+  font-size: 13px;
+}
+.field-grow { min-width: 0; }
+.filters-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .error { color: #f4212e; margin-bottom: 12px; min-height: 20px; }
 .topbar {
   display: flex;
@@ -93,6 +129,9 @@ th { color: #71767b; font-weight: 600; }
 }
 .muted { color: #71767b; }
 @media (max-width: 900px) {
+  .filters-row {
+    grid-template-columns: 1fr;
+  }
   table, thead, tbody, th, td, tr { display: block; }
   thead { display: none; }
   tr {
