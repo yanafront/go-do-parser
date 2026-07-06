@@ -95,11 +95,14 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 	if cfg.Database.Enabled() {
 		database, err := db.Open(cfg.Database.URL)
 		if err != nil {
-			st.Close()
-			return nil, err
+			log.Warn("database unavailable, continuing without db",
+				zap.Error(err),
+				zap.String("hint", "in Railway: go-do-parser → Variables → Add Reference → Postgres → DATABASE_URL"),
+			)
+		} else {
+			app.db = database
+			log.Info("database connected")
 		}
-		app.db = database
-		log.Info("database connected")
 	}
 
 	if cfg.MessengerEnabled() {
