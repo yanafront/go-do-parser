@@ -178,7 +178,7 @@ func (c *Config) applyEnv() {
 		c.Outreach.Session = v
 	}
 	if v := os.Getenv("OUTREACH_MESSAGE"); v != "" {
-		c.Outreach.Message = v
+		c.Outreach.Message = unescapeEnv(v)
 	}
 	if v := os.Getenv("OUTREACH_DATA_DIR"); v != "" {
 		c.Outreach.DataDir = v
@@ -198,7 +198,7 @@ func (c *Config) applyEnv() {
 		c.Outreach.ExplicitlyEnabled = true
 	}
 	if v := os.Getenv("SEEKER_MESSAGE"); v != "" {
-		c.Seeker.Message = v
+		c.Seeker.Message = unescapeEnv(v)
 	}
 	if v := os.Getenv("SEEKER_DATA_DIR"); v != "" {
 		c.Seeker.DataDir = v
@@ -313,4 +313,8 @@ func trimSpace(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+func unescapeEnv(s string) string {
+	return strings.NewReplacer("\\n", "\n", "\\t", "\t").Replace(s)
 }

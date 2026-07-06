@@ -10,13 +10,17 @@ import (
 
 func formatMessage(raw string) (string, []tg.MessageEntityClass) {
 	raw = strings.TrimSpace(raw)
-	if raw == "" || !strings.Contains(raw, "<") {
+	if raw == "" {
 		return raw, nil
 	}
-	eb := entity.Builder{}
-	if err := html.HTML(strings.NewReader(raw), &eb, html.Options{}); err != nil {
-		return raw, nil
+	if strings.Contains(raw, "<") {
+		raw = strings.ReplaceAll(raw, "\n", "<br>")
+		eb := entity.Builder{}
+		if err := html.HTML(strings.NewReader(raw), &eb, html.Options{}); err != nil {
+			return strings.ReplaceAll(raw, "<br>", "\n"), nil
+		}
+		text, entities := eb.Complete()
+		return text, entities
 	}
-	text, entities := eb.Complete()
-	return text, entities
+	return raw, nil
 }
