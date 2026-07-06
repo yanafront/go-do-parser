@@ -80,7 +80,7 @@ SELECT id, source_channel, source_message_id, dest_message_id, body,
        published_at, created_at
 FROM vacancies
 %s
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $%d OFFSET $%d
 `, where, nextArg, nextArg+1)
 	listArgs := append(append([]any{}, args...), limit, offset)
@@ -125,7 +125,7 @@ SELECT id, source_channel, source_message_id, body,
        poster_username, ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, created_at
 FROM job_seeker_posts
 %s
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $%d OFFSET $%d
 `, where, nextArg, nextArg+1)
 	listArgs := append(append([]any{}, args...), limit, offset)

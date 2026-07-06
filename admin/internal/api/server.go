@@ -169,6 +169,12 @@ func pageParams(r *http.Request) (limit, offset int) {
 			offset = n
 		}
 	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	return limit, offset
 }
 

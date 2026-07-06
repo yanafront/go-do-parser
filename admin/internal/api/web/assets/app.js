@@ -9,8 +9,11 @@ const emptyFilters = () => ({
 const state = {
   token: localStorage.getItem('admin_token') || '',
   tab: 'vacancies',
-  offset: 0,
   limit: 50,
+  offsets: {
+    vacancies: 0,
+    seekers: 0,
+  },
   filters: {
     vacancies: emptyFilters(),
     seekers: emptyFilters(),
@@ -19,6 +22,7 @@ const state = {
     vacancies: [],
     seekers: [],
   },
+  loadingTable: false,
 };
 
 const app = document.getElementById('app');
@@ -45,19 +49,31 @@ function fmtDate(v) {
   return new Date(v).toLocaleString('ru-RU');
 }
 
+function tabKey() {
+  return state.tab === 'vacancies' ? 'vacancies' : 'seekers';
+}
+
 function currentFilters() {
-  return state.filters[state.tab === 'vacancies' ? 'vacancies' : 'seekers'];
+  return state.filters[tabKey()];
+}
+
+function currentOffset() {
+  return state.offsets[tabKey()];
+}
+
+function setCurrentOffset(value) {
+  state.offsets[tabKey()] = Math.max(0, Number(value) || 0);
 }
 
 function channelType() {
-  return state.tab === 'vacancies' ? 'vacancies' : 'seekers';
+  return tabKey();
 }
 
 function buildQuery() {
   const f = currentFilters();
   const params = new URLSearchParams({
     limit: String(state.limit),
-    offset: String(state.offset),
+    offset: String(currentOffset()),
   });
   if (f.q) params.set('q', f.q);
   if (f.channel) params.set('channel', f.channel);
@@ -101,7 +117,8 @@ function renderLogin(error = '') {
       });
       state.token = data.token;
       localStorage.setItem('admin_token', state.token);
-      state.offset = 0;
+      state.offsets.vacancies = 0;
+      state.offsets.seekers = 0;
       await renderApp();
     } catch (err) {
       renderLogin(err.message === 'invalid password' ? 'Неверный пароль' : 'Ошибка входа');
@@ -163,8 +180,7 @@ function filtersHTML() {
 }
 
 function readFiltersFromForm() {
-  const key = state.tab === 'vacancies' ? 'vacancies' : 'seekers';
-  state.filters[key] = {
+  state.filters[tabKey()] = {
     q: document.getElementById('filter-q')?.value.trim() || '',
     channel: document.getElementById('filter-channel')?.value || '',
     has_dm: document.getElementById('filter-dm')?.value || '',
@@ -176,20 +192,19 @@ function readFiltersFromForm() {
 function bindFilters() {
   document.getElementById('apply-filters').onclick = async () => {
     readFiltersFromForm();
-    state.offset = 0;
+    setCurrentOffset(0);
     await reloadTable();
   };
   document.getElementById('reset-filters').onclick = async () => {
-    const key = state.tab === 'vacancies' ? 'vacancies' : 'seekers';
-    state.filters[key] = emptyFilters();
-    state.offset = 0;
+    state.filters[tabKey()] = emptyFilters();
+    setCurrentOffset(0);
     await reloadTable();
   };
   document.getElementById('filter-q').addEventListener('keydown', async (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       readFiltersFromForm();
-      state.offset = 0;
+      setCurrentOffset(0);
       await reloadTable();
     }
   });
@@ -210,12 +225,12 @@ async function renderApp() {
           <h1>Podrabotki Admin</h1>
           <div class="sub">Вакансии и соискатели из Telegram</div>
         </div>
-        <button class="ghost" id="logout">Выйти</button>
+        <button class="ghost" type="button" id="logout">Выйти</button>
       </div>
       <div class="stats" id="stats"></div>
       <div class="tabs">
-        <button class="tab ${state.tab === 'vacancies' ? 'active' : ''}" data-tab="vacancies">Вакансии</button>
-        <button class="tab ${state.tab === 'seekers' ? 'active' : ''}" data-tab="seekers">Соискатели</button>
+        <button class="tab ${state.tab === 'vacancies' ? 'active' : ''}" type="button" data-tab="vacancies">Вакансии</button>
+        <button class="tab ${state.tab === 'seekers' ? 'active' : ''}" type="button" data-tab="seekers">Соискатели</button>
       </div>
       <div class="card table-card" id="content">Загрузка...</div>
     </div>
@@ -224,7 +239,6 @@ async function renderApp() {
   document.querySelectorAll('.tab').forEach((btn) => {
     btn.onclick = async () => {
       state.tab = btn.dataset.tab;
-      state.offset = 0;
       await renderApp();
     };
   });
@@ -242,18 +256,38 @@ async function renderApp() {
 }
 
 async function reloadTable() {
-  document.getElementById('content').innerHTML = 'Загрузка...';
+  if (state.loadingTable) return;
+  state.loadingTable = true;
+  const content = document.getElementById('content');
+  if (content) content.innerHTML = '<div class="loading">Загрузка...</div>';
   try {
     await loadChannels();
     if (state.tab === 'vacancies') await renderVacancies();
     else await renderSeekers();
+    content?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch {
     logout();
+  } finally {
+    state.loadingTable = false;
   }
+}
+
+function syncPaging(data) {
+  const total = Number(data.total) || 0;
+  const limit = Number(data.limit) || state.limit;
+  let offset = Number(data.offset);
+  if (Number.isNaN(offset)) offset = currentOffset();
+  if (offset >= total && total > 0) {
+    offset = Math.max(0, total - (total % limit || limit));
+    if (offset === total) offset = Math.max(0, total - limit);
+  }
+  setCurrentOffset(offset);
+  if (limit > 0) state.limit = limit;
 }
 
 async function renderVacancies() {
   const data = await api(`/api/vacancies?${buildQuery()}`);
+  syncPaging(data);
   const rows = (data.items || []).map((v) => `
     <tr>
       <td data-label="ID">${v.id}</td>
@@ -278,11 +312,12 @@ async function renderVacancies() {
     ${pagerHTML(data)}
   `;
   bindFilters();
-  bindPager(data);
+  bindPager();
 }
 
 async function renderSeekers() {
   const data = await api(`/api/job-seekers?${buildQuery()}`);
+  syncPaging(data);
   const rows = (data.items || []).map((v) => `
     <tr>
       <td data-label="ID">${v.id}</td>
@@ -307,34 +342,48 @@ async function renderSeekers() {
     ${pagerHTML(data)}
   `;
   bindFilters();
-  bindPager(data);
+  bindPager();
 }
 
 function pagerHTML(data) {
-  const from = data.total === 0 ? 0 : data.offset + 1;
-  const to = Math.min(data.offset + data.limit, data.total);
+  const total = Number(data.total) || 0;
+  const offset = currentOffset();
+  const limit = state.limit;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + limit, total);
+  const page = total === 0 ? 1 : Math.floor(offset / limit) + 1;
+  const pages = total === 0 ? 1 : Math.ceil(total / limit);
+  const prevDisabled = offset <= 0;
+  const nextDisabled = offset + limit >= total;
+
   return `
     <div class="pager">
-      <span class="muted">${from}–${to} из ${data.total}</span>
-      <div>
-        <button class="ghost" id="prev" ${data.offset <= 0 ? 'disabled' : ''}>Назад</button>
-        <button class="ghost" id="next" ${data.offset + data.limit >= data.total ? 'disabled' : ''}>Вперёд</button>
+      <span class="muted">${from}–${to} из ${total} · стр. ${page} из ${pages}</span>
+      <div class="pager-buttons">
+        <button class="ghost" type="button" id="prev" ${prevDisabled ? 'disabled' : ''}>Назад</button>
+        <button class="ghost" type="button" id="next" ${nextDisabled ? 'disabled' : ''}>Вперёд</button>
       </div>
     </div>
   `;
 }
 
-function bindPager(data) {
+function bindPager() {
   const prev = document.getElementById('prev');
   const next = document.getElementById('next');
-  if (prev) prev.onclick = async () => {
-    state.offset = Math.max(0, data.offset - state.limit);
-    await reloadTable();
-  };
-  if (next) next.onclick = async () => {
-    state.offset = data.offset + state.limit;
-    await reloadTable();
-  };
+  if (prev) {
+    prev.onclick = async () => {
+      if (prev.disabled) return;
+      setCurrentOffset(currentOffset() - state.limit);
+      await reloadTable();
+    };
+  }
+  if (next) {
+    next.onclick = async () => {
+      if (next.disabled) return;
+      setCurrentOffset(currentOffset() + state.limit);
+      await reloadTable();
+    };
+  }
 }
 
 (async function init() {

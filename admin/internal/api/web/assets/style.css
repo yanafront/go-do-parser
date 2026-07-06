@@ -56,6 +56,18 @@ button.primary { background: #1d9bf0; color: #fff; width: 100%; }
 button.primary.compact { width: auto; }
 button.compact { padding: 10px 16px; }
 button.ghost { background: transparent; color: #e7e9ea; border: 1px solid #2f3336; }
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.pager-buttons {
+  display: flex;
+  gap: 8px;
+}
+.loading {
+  padding: 24px 0;
+  color: #71767b;
+}
 .table-card { margin-top: 16px; }
 .filters {
   margin-bottom: 20px;
