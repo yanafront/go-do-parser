@@ -11,7 +11,9 @@ import (
 
 type Config struct {
 	Telegram TelegramConfig `yaml:"telegram"`
+	Database DatabaseConfig `yaml:"database"`
 	Outreach OutreachConfig `yaml:"outreach"`
+	Seeker   SeekerConfig   `yaml:"seeker"`
 	App      AppConfig      `yaml:"app"`
 }
 
@@ -26,6 +28,14 @@ type TelegramConfig struct {
 	PlatformURL string   `yaml:"platform_url"`
 	MatcherURL  string   `yaml:"matcher_url"`
 	IngestSecret string  `yaml:"ingest_secret"`
+}
+
+type DatabaseConfig struct {
+	URL string `yaml:"url"`
+}
+
+func (c DatabaseConfig) Enabled() bool {
+	return strings.TrimSpace(c.URL) != ""
 }
 
 type OutreachConfig struct {
@@ -43,6 +53,25 @@ func (c OutreachConfig) Enabled() bool {
 		return false
 	}
 	return strings.TrimSpace(c.Phone) != "" && strings.TrimSpace(c.Message) != ""
+}
+
+type SeekerConfig struct {
+	Message           string
+	DailyLimit        int
+	Delay             time.Duration
+	DataDir           string
+	ExplicitlyEnabled bool
+}
+
+func (c SeekerConfig) Enabled() bool {
+	if !c.ExplicitlyEnabled {
+		return false
+	}
+	return strings.TrimSpace(c.Message) != ""
+}
+
+func (c *Config) MessengerEnabled() bool {
+	return strings.TrimSpace(c.Outreach.Phone) != "" && (c.Outreach.Enabled() || c.Seeker.Enabled())
 }
 
 type AppConfig struct {
@@ -111,6 +140,9 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("INGEST_SECRET"); v != "" {
 		c.Telegram.IngestSecret = v
 	}
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		c.Database.URL = v
+	}
 	if v := os.Getenv("DATA_DIR"); v != "" {
 		c.App.DataDir = v
 	}
@@ -163,6 +195,26 @@ func (c *Config) applyEnv() {
 	if v := strings.TrimSpace(os.Getenv("OUTREACH_ENABLED")); v == "true" || v == "1" || strings.EqualFold(v, "yes") {
 		c.Outreach.ExplicitlyEnabled = true
 	}
+	if v := os.Getenv("SEEKER_MESSAGE"); v != "" {
+		c.Seeker.Message = v
+	}
+	if v := os.Getenv("SEEKER_DATA_DIR"); v != "" {
+		c.Seeker.DataDir = v
+	}
+	if v := os.Getenv("SEEKER_DAILY_LIMIT"); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
+			c.Seeker.DailyLimit = n
+		}
+	}
+	if v := os.Getenv("SEEKER_DELAY"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			c.Seeker.Delay = d
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SEEKER_ENABLED")); v == "true" || v == "1" || strings.EqualFold(v, "yes") {
+		c.Seeker.ExplicitlyEnabled = true
+	}
 }
 
 func (c *Config) setDefaults() {
@@ -192,6 +244,15 @@ func (c *Config) setDefaults() {
 	}
 	if c.Outreach.Delay == 0 {
 		c.Outreach.Delay = 10 * time.Minute
+	}
+	if c.Seeker.DataDir == "" {
+		c.Seeker.DataDir = c.App.DataDir + "/seeker"
+	}
+	if c.Seeker.DailyLimit == 0 {
+		c.Seeker.DailyLimit = 5
+	}
+	if c.Seeker.Delay == 0 {
+		c.Seeker.Delay = 10 * time.Minute
 	}
 }
 

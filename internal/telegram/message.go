@@ -1,5 +1,7 @@
 package telegram
 
+import "strings"
+
 type Post struct {
 	SourceChannel string
 	MessageID     int
@@ -14,4 +16,12 @@ type Post struct {
 type FetchResult struct {
 	Posts []Post
 	MaxID int
+}
+
+func PostBody(post Post) string {
+	text := strings.TrimSpace(post.Text)
+	if text == "" {
+		text = strings.TrimSpace(post.Caption)
+	}
+	return text
 }

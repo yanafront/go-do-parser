@@ -30,11 +30,19 @@ type diskState struct {
 }
 
 func OpenStore(dataDir string) (*Store, error) {
+	return openStore(dataDir, "outreach.json")
+}
+
+func OpenStoreFile(dataDir, filename string) (*Store, error) {
+	return openStore(dataDir, filename)
+}
+
+func openStore(dataDir, filename string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, err
 	}
 	s := &Store{
-		path: filepath.Join(dataDir, "outreach.json"),
+		path: filepath.Join(dataDir, filename),
 		data: diskState{
 			Contacted: make(map[string]Record),
 			Daily:     make(map[string]int),
@@ -133,6 +141,14 @@ func (s *Store) MarkSent(key string, rec Record) error {
 	s.data.Contacted[key] = rec
 	day := todayKey()
 	s.data.Daily[day]++
+	s.data.LastSentAt = time.Now().UTC().Format(time.RFC3339)
+	s.mu.Unlock()
+	return s.save()
+}
+
+func (s *Store) TouchLastSent() error {
+	s.mu.Lock()
+	s.ensure()
 	s.data.LastSentAt = time.Now().UTC().Format(time.RFC3339)
 	s.mu.Unlock()
 	return s.save()

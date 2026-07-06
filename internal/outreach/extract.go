@@ -6,6 +6,7 @@ import (
 )
 
 var phoneRE = regexp.MustCompile(`(?i)(?:\+?\s*375[\s\-]*\d{2}[\s\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}|8[\s\-]*0\d{2}[\s\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}|\+?\s*80\d{9})`)
+var usernameRE = regexp.MustCompile(`(?i)@([a-zA-Z][a-zA-Z0-9_]{4,31})`)
 
 type Target struct {
 	Key  string
@@ -36,6 +37,65 @@ func ExtractTargets(text string) []Target {
 	}
 
 	return out
+}
+
+func ExtractAdContacts(text string, skip map[string]bool) (username, phone string) {
+	if u, ok := ExtractUsername(text, skip); ok {
+		username = u.Raw
+	}
+	for _, m := range phoneRE.FindAllString(text, -1) {
+		p := normalizePhone(m)
+		if isBelarusPhone(p) {
+			phone = p
+			break
+		}
+	}
+	return username, phone
+}
+
+func ExtractSeekerContacts(text string, skip map[string]bool) (poster, adUser, adPhone string) {
+	seen := make(map[string]bool)
+	var usernames []string
+	for _, m := range usernameRE.FindAllStringSubmatch(text, -1) {
+		u := strings.ToLower(m[1])
+		if skip[u] || strings.HasSuffix(u, "bot") || seen[u] {
+			continue
+		}
+		seen[u] = true
+		usernames = append(usernames, u)
+	}
+	if len(usernames) > 0 {
+		poster = usernames[0]
+	}
+	if len(usernames) > 1 {
+		adUser = usernames[1]
+	}
+	for _, m := range phoneRE.FindAllString(text, -1) {
+		p := normalizePhone(m)
+		if isBelarusPhone(p) {
+			adPhone = p
+			break
+		}
+	}
+	return poster, adUser, adPhone
+}
+
+func ExtractUsername(text string, skip map[string]bool) (Target, bool) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return Target{}, false
+	}
+	for _, m := range usernameRE.FindAllStringSubmatch(text, -1) {
+		u := strings.ToLower(m[1])
+		if skip[u] {
+			continue
+		}
+		if strings.HasSuffix(u, "bot") {
+			continue
+		}
+		return Target{Key: "u:" + u, Type: "username", Raw: u}, true
+	}
+	return Target{}, false
 }
 
 func isBelarusPhone(phone string) bool {

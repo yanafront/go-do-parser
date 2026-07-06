@@ -20,22 +20,28 @@ import (
 )
 
 type Service struct {
-	cfg       config.OutreachConfig
-	apiID     int
-	apiHash   string
-	store     *Store
-	skip      map[string]bool
-	log       *zap.Logger
-	client    *gotdtelegram.Client
-	api       *tg.Client
-	sendCh    chan sendJob
-	readyCh   chan struct{}
+	phone       string
+	dataDir     string
+	employerCfg config.OutreachConfig
+	seekerCfg   config.SeekerConfig
+	apiID       int
+	apiHash     string
+	employerStore *Store
+	seekerStore   *Store
+	rateStore     *Store
+	skip          map[string]bool
+	log           *zap.Logger
+	client        *gotdtelegram.Client
+	api           *tg.Client
+	sendCh        chan sendJob
+	readyCh       chan struct{}
 }
 
 type sendJob struct {
 	target  Target
 	source  string
 	msgID   int
+	message string
 	result  chan error
 }
 
@@ -46,21 +52,35 @@ type PostInfo struct {
 	Caption       string
 }
 
-func NewService(cfg config.OutreachConfig, apiID int, apiHash string, store *Store, skip map[string]bool, log *zap.Logger) *Service {
+func NewService(
+	phone, dataDir string,
+	employerCfg config.OutreachConfig,
+	seekerCfg config.SeekerConfig,
+	apiID int,
+	apiHash string,
+	employerStore, seekerStore, rateStore *Store,
+	skip map[string]bool,
+	log *zap.Logger,
+) *Service {
 	return &Service{
-		cfg:     cfg,
-		apiID:   apiID,
-		apiHash: apiHash,
-		store:   store,
-		skip:    skip,
-		log:     log,
-		sendCh:  make(chan sendJob, 16),
-		readyCh: make(chan struct{}),
+		phone:         phone,
+		dataDir:       dataDir,
+		employerCfg:   employerCfg,
+		seekerCfg:     seekerCfg,
+		apiID:         apiID,
+		apiHash:       apiHash,
+		employerStore: employerStore,
+		seekerStore:   seekerStore,
+		rateStore:     rateStore,
+		skip:          skip,
+		log:           log,
+		sendCh:        make(chan sendJob, 16),
+		readyCh:       make(chan struct{}),
 	}
 }
 
 func (s *Service) Connect(ctx context.Context) error {
-	sessionPath, err := telegram.PrepareOutreachSession(s.cfg.DataDir)
+	sessionPath, err := telegram.PrepareOutreachSession(s.dataDir)
 	if err != nil {
 		return err
 	}
@@ -79,7 +99,7 @@ func (s *Service) Connect(ctx context.Context) error {
 	return s.client.Run(ctx, func(ctx context.Context) error {
 		flow := auth.NewFlow(
 			constantAuthenticator(
-				telegram.NormalizePhone(s.cfg.Phone),
+				telegram.NormalizePhone(s.phone),
 				strings.TrimSpace(os.Getenv("OUTREACH_AUTH_PASSWORD")),
 			),
 			auth.SendCodeOptions{},
@@ -89,7 +109,7 @@ func (s *Service) Connect(ctx context.Context) error {
 		}
 
 		s.api = s.client.API()
-		s.log.Info("outreach authorized", zap.String("phone", telegram.MaskPhone(s.cfg.Phone)))
+		s.log.Info("outreach authorized", zap.String("phone", telegram.MaskPhone(s.phone)))
 		close(s.readyCh)
 
 		for {
@@ -97,7 +117,7 @@ func (s *Service) Connect(ctx context.Context) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			case job := <-s.sendCh:
-				job.result <- s.sendOne(ctx, job.target, job.source, job.msgID)
+				job.result <- s.sendOne(ctx, job.target, job.message)
 			}
 		}
 	})
@@ -107,37 +127,37 @@ func (s *Service) Ready() <-chan struct{} {
 	return s.readyCh
 }
 
-func (s *Service) HandlePost(ctx context.Context, post PostInfo) {
-	if !s.store.CanSendToday(s.cfg.DailyLimit) {
-		s.log.Info("outreach daily limit reached", zap.Int("limit", s.cfg.DailyLimit))
-		return
+func (s *Service) HandlePost(ctx context.Context, post PostInfo) *Target {
+	if !s.employerCfg.Enabled() || s.employerStore == nil {
+		return nil
 	}
-	if !s.store.CanSendNow(s.cfg.Delay) {
-		s.log.Info("outreach cooldown", zap.Duration("delay", s.cfg.Delay))
-		return
+	if !s.employerStore.CanSendToday(s.employerCfg.DailyLimit) {
+		s.log.Info("outreach daily limit reached", zap.Int("limit", s.employerCfg.DailyLimit))
+		return nil
+	}
+	if !s.rateStore.CanSendNow(s.employerCfg.Delay) {
+		s.log.Info("outreach cooldown", zap.Duration("delay", s.employerCfg.Delay))
+		return nil
 	}
 
-	text := strings.TrimSpace(post.Text)
-	if text == "" {
-		text = strings.TrimSpace(post.Caption)
-	}
+	text := postText(post)
 	targets := ExtractTargets(text)
 	if len(targets) == 0 {
-		return
+		return nil
 	}
 
 	for _, target := range targets {
-		if !s.store.CanSendToday(s.cfg.DailyLimit) {
-			return
+		if !s.employerStore.CanSendToday(s.employerCfg.DailyLimit) {
+			return nil
 		}
-		if !s.store.CanSendNow(s.cfg.Delay) {
-			return
+		if !s.rateStore.CanSendNow(s.employerCfg.Delay) {
+			return nil
 		}
-		if s.store.WasContacted(target.Key) {
+		if s.employerStore.WasContacted(target.Key) {
 			continue
 		}
 
-		if err := s.send(ctx, target, post.SourceChannel, post.MessageID); err != nil {
+		if err := s.send(ctx, target, s.employerCfg.Message); err != nil {
 			s.log.Warn("outreach send failed",
 				zap.String("target", target.Raw),
 				zap.String("type", target.Type),
@@ -153,8 +173,11 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) {
 			Source:  post.SourceChannel,
 			Message: post.MessageID,
 		}
-		if err := s.store.MarkSent(target.Key, rec); err != nil {
+		if err := s.employerStore.MarkSent(target.Key, rec); err != nil {
 			s.log.Warn("outreach store failed", zap.Error(err))
+		}
+		if err := s.rateStore.TouchLastSent(); err != nil {
+			s.log.Warn("outreach rate store failed", zap.Error(err))
 		}
 
 		s.log.Info("outreach sent",
@@ -162,16 +185,81 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) {
 			zap.String("type", target.Type),
 			zap.String("source", post.SourceChannel),
 			zap.Int("message_id", post.MessageID),
-			zap.Int("daily_sent", s.store.DailySent()),
+			zap.Int("daily_sent", s.employerStore.DailySent()),
 		)
-		return
+		return &target
 	}
+	return nil
 }
 
-func (s *Service) send(ctx context.Context, target Target, source string, msgID int) error {
+func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
+	if !s.seekerCfg.Enabled() || s.seekerStore == nil {
+		return nil
+	}
+	if !telegram.IsJobSeeker(telegram.Post{Text: post.Text, Caption: post.Caption}) {
+		return nil
+	}
+	if !s.seekerStore.CanSendToday(s.seekerCfg.DailyLimit) {
+		s.log.Info("seeker daily limit reached", zap.Int("limit", s.seekerCfg.DailyLimit))
+		return nil
+	}
+	if !s.rateStore.CanSendNow(s.seekerCfg.Delay) {
+		s.log.Info("seeker cooldown", zap.Duration("delay", s.seekerCfg.Delay))
+		return nil
+	}
+
+	text := postText(post)
+	target, ok := ExtractUsername(text, s.skip)
+	if !ok {
+		return nil
+	}
+	if s.seekerStore.WasContacted(target.Key) {
+		return nil
+	}
+
+	if err := s.send(ctx, target, s.seekerCfg.Message); err != nil {
+		s.log.Warn("seeker send failed",
+			zap.String("target", target.Raw),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	rec := Record{
+		Target:  target.Raw,
+		Type:    target.Type,
+		SentAt:  time.Now().UTC().Format(time.RFC3339),
+		Source:  post.SourceChannel,
+		Message: post.MessageID,
+	}
+	if err := s.seekerStore.MarkSent(target.Key, rec); err != nil {
+		s.log.Warn("seeker store failed", zap.Error(err))
+	}
+	if err := s.rateStore.TouchLastSent(); err != nil {
+		s.log.Warn("seeker rate store failed", zap.Error(err))
+	}
+
+	s.log.Info("seeker sent",
+		zap.String("target", target.Raw),
+		zap.String("source", post.SourceChannel),
+		zap.Int("message_id", post.MessageID),
+		zap.Int("daily_sent", s.seekerStore.DailySent()),
+	)
+	return &target
+}
+
+func postText(post PostInfo) string {
+	text := strings.TrimSpace(post.Text)
+	if text == "" {
+		text = strings.TrimSpace(post.Caption)
+	}
+	return text
+}
+
+func (s *Service) send(ctx context.Context, target Target, message string) error {
 	result := make(chan error, 1)
 	select {
-	case s.sendCh <- sendJob{target: target, source: source, msgID: msgID, result: result}:
+	case s.sendCh <- sendJob{target: target, message: message, result: result}:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -183,7 +271,7 @@ func (s *Service) send(ctx context.Context, target Target, source string, msgID 
 	}
 }
 
-func (s *Service) sendOne(ctx context.Context, target Target, source string, msgID int) error {
+func (s *Service) sendOne(ctx context.Context, target Target, message string) error {
 	peer, err := s.resolvePeer(ctx, target)
 	if err != nil {
 		return err
@@ -194,7 +282,7 @@ func (s *Service) sendOne(ctx context.Context, target Target, source string, msg
 		return err
 	}
 
-	text, entities := formatMessage(s.cfg.Message)
+	text, entities := formatMessage(message)
 	req := &tg.MessagesSendMessageRequest{
 		Peer:     peer,
 		Message:  text,

@@ -35,6 +35,11 @@ func IsBlocked(post Post) bool {
 	return strings.Contains(text, "заблокирован") || strings.Contains(text, "внимание")
 }
 
+func IsJobSeeker(post Post) bool {
+	text := strings.ToLower(postText(post))
+	return strings.Contains(text, "ищу подработку") || strings.Contains(text, "ищу работу")
+}
+
 func postText(post Post) string {
 	text := strings.TrimSpace(post.Text)
 	if text == "" {
