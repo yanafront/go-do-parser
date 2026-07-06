@@ -29,15 +29,19 @@ type TelegramConfig struct {
 }
 
 type OutreachConfig struct {
-	Phone      string
-	Session    string
-	Message    string
-	DailyLimit int
-	Delay      time.Duration
-	DataDir    string
+	Phone             string
+	Session           string
+	Message           string
+	DailyLimit        int
+	Delay             time.Duration
+	DataDir           string
+	ExplicitlyEnabled bool
 }
 
 func (c OutreachConfig) Enabled() bool {
+	if !c.ExplicitlyEnabled {
+		return false
+	}
 	return strings.TrimSpace(c.Phone) != "" && strings.TrimSpace(c.Message) != ""
 }
 
@@ -155,6 +159,9 @@ func (c *Config) applyEnv() {
 		if d, err := time.ParseDuration(v); err == nil {
 			c.Outreach.Delay = d
 		}
+	}
+	if v := strings.TrimSpace(os.Getenv("OUTREACH_ENABLED")); v == "true" || v == "1" || strings.EqualFold(v, "yes") {
+		c.Outreach.ExplicitlyEnabled = true
 	}
 }
 
