@@ -27,9 +27,10 @@ type Service struct {
 	seekerCfg   config.SeekerConfig
 	apiID       int
 	apiHash     string
-	employerStore *Store
-	seekerStore   *Store
-	rateStore     *Store
+	employerStore     *Store
+	seekerStore       *Store
+	employerRateStore *Store
+	seekerRateStore   *Store
 	skip          map[string]bool
 	log           *zap.Logger
 	client        *gotdtelegram.Client
@@ -49,10 +50,13 @@ type sendJob struct {
 type PostInfo struct {
 	SourceChannel  string
 	MessageID      int
+	Body           string
 	Text           string
 	Caption        string
 	PosterUsername string
 	PosterPhone    string
+	AdUsername     string
+	AdPhone        string
 }
 
 func NewService(
@@ -61,7 +65,7 @@ func NewService(
 	seekerCfg config.SeekerConfig,
 	apiID int,
 	apiHash string,
-	employerStore, seekerStore, rateStore *Store,
+	employerStore, seekerStore, employerRateStore, seekerRateStore *Store,
 	skip map[string]bool,
 	log *zap.Logger,
 ) *Service {
@@ -73,9 +77,10 @@ func NewService(
 		seekerCfg:     seekerCfg,
 		apiID:         apiID,
 		apiHash:       apiHash,
-		employerStore: employerStore,
-		seekerStore:   seekerStore,
-		rateStore:     rateStore,
+		employerStore:     employerStore,
+		seekerStore:       seekerStore,
+		employerRateStore: employerRateStore,
+		seekerRateStore:   seekerRateStore,
 		skip:          skip,
 		log:           log,
 		sendCh:        make(chan sendJob, 16),
@@ -132,7 +137,7 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) *Target {
 		s.log.Info("outreach daily limit reached", zap.Int("limit", s.employerCfg.DailyLimit))
 		return nil
 	}
-	if !s.rateStore.CanSendNow(s.employerCfg.Delay) {
+	if s.employerRateStore == nil || !s.employerRateStore.CanSendNow(s.employerCfg.Delay) {
 		s.log.Info("outreach cooldown", zap.Duration("delay", s.employerCfg.Delay))
 		return nil
 	}
@@ -147,7 +152,7 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) *Target {
 		if !s.employerStore.CanSendToday(s.employerCfg.DailyLimit) {
 			return nil
 		}
-		if !s.rateStore.CanSendNow(s.employerCfg.Delay) {
+		if !s.employerRateStore.CanSendNow(s.employerCfg.Delay) {
 			return nil
 		}
 		if s.employerStore.WasContacted(target.Key) {
@@ -173,7 +178,7 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) *Target {
 		if err := s.employerStore.MarkSent(target.Key, rec); err != nil {
 			s.log.Warn("outreach store failed", zap.Error(err))
 		}
-		if err := s.rateStore.TouchLastSent(); err != nil {
+		if err := s.employerRateStore.TouchLastSent(); err != nil {
 			s.log.Warn("outreach rate store failed", zap.Error(err))
 		}
 
@@ -200,17 +205,21 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 		s.log.Info("seeker daily limit reached", zap.Int("limit", s.seekerCfg.DailyLimit))
 		return nil
 	}
-	if !s.rateStore.CanSendNow(s.seekerCfg.Delay) {
+	if s.seekerRateStore == nil || !s.seekerRateStore.CanSendNow(s.seekerCfg.Delay) {
 		s.log.Info("seeker cooldown", zap.Duration("delay", s.seekerCfg.Delay))
 		return nil
 	}
 
 	text := postText(post)
-	target, ok := SeekerTarget(text, post.PosterUsername, post.PosterPhone, s.skip)
+	target, ok := SeekerTarget(text, post.PosterUsername, post.PosterPhone, post.AdUsername, post.AdPhone, s.skip)
 	if !ok {
-		s.log.Info("seeker skipped: no contact in post",
+		s.log.Info("seeker skipped: no contact",
 			zap.String("source", post.SourceChannel),
 			zap.Int("message_id", post.MessageID),
+			zap.String("poster", post.PosterUsername),
+			zap.String("poster_phone", post.PosterPhone),
+			zap.String("ad_username", post.AdUsername),
+			zap.String("ad_phone", post.AdPhone),
 		)
 		return nil
 	}
@@ -240,7 +249,7 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 	if err := s.seekerStore.MarkSent(target.Key, rec); err != nil {
 		s.log.Warn("seeker store failed", zap.Error(err))
 	}
-	if err := s.rateStore.TouchLastSent(); err != nil {
+	if err := s.seekerRateStore.TouchLastSent(); err != nil {
 		s.log.Warn("seeker rate store failed", zap.Error(err))
 	}
 
@@ -254,6 +263,9 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 }
 
 func postText(post PostInfo) string {
+	if v := strings.TrimSpace(post.Body); v != "" {
+		return v
+	}
 	text := strings.TrimSpace(post.Text)
 	if text == "" {
 		text = strings.TrimSpace(post.Caption)

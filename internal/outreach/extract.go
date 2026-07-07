@@ -72,7 +72,18 @@ func SeekerAdContacts(body, posterUsername, posterPhone string, skip map[string]
 	return "", ""
 }
 
-func SeekerTarget(text, posterUsername, posterPhone string, skip map[string]bool) (Target, bool) {
+func SeekerTarget(text, posterUsername, posterPhone, adUsername, adPhone string, skip map[string]bool) (Target, bool) {
+	if adUsername != "" && isTelegramUsername(adUsername) {
+		if t, ok := ExtractUsername("@"+strings.TrimPrefix(adUsername, "@"), skip); ok {
+			return t, true
+		}
+	}
+	if adPhone != "" {
+		p := normalizePhone(adPhone)
+		if isBelarusPhone(p) {
+			return Target{Key: "p:" + p, Type: "phone", Raw: p}, true
+		}
+	}
 	if t, ok := ExtractSeekerTarget(text, skip); ok {
 		return t, true
 	}

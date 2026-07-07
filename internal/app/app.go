@@ -26,9 +26,10 @@ type App struct {
 	publisher   *telegram.Publisher
 	webhook     *webhook.Client
 	outreach    *outreach.Service
-	outStore    *outreach.Store
-	seekerStore *outreach.Store
-	rateStore   *outreach.Store
+	outStore        *outreach.Store
+	seekerStore     *outreach.Store
+	employerRateStore *outreach.Store
+	seekerRateStore   *outreach.Store
 	log         *zap.Logger
 }
 
@@ -118,14 +119,26 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 				return nil, err
 			}
 		}
-		app.rateStore, err = outreach.OpenStoreFile(cfg.Outreach.DataDir, "rate.json")
+		app.employerRateStore, err = outreach.OpenStoreFile(cfg.Outreach.DataDir, "rate.json")
 		if err != nil {
 			st.Close()
 			return nil, err
 		}
+		if cfg.Seeker.Enabled() {
+			app.seekerRateStore, err = outreach.OpenStoreFile(cfg.Seeker.DataDir, "rate.json")
+			if err != nil {
+				st.Close()
+				return nil, err
+			}
+		}
+
+		messengerPhone := strings.TrimSpace(cfg.Outreach.Phone)
+		if messengerPhone == "" {
+			messengerPhone = strings.TrimSpace(cfg.Telegram.Phone)
+		}
 
 		app.outreach = outreach.NewService(
-			cfg.Outreach.Phone,
+			messengerPhone,
 			cfg.Outreach.DataDir,
 			cfg.App.DataDir,
 			cfg.Outreach,
@@ -134,7 +147,8 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 			cfg.Telegram.APIHash,
 			app.outStore,
 			app.seekerStore,
-			app.rateStore,
+			app.employerRateStore,
+			app.seekerRateStore,
 			skip,
 			log,
 		)
@@ -149,7 +163,7 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		}
 		if cfg.Seeker.Enabled() {
 			log.Info("seeker outreach enabled",
-				zap.String("phone", telegram.MaskPhone(cfg.Outreach.Phone)),
+				zap.String("phone", telegram.MaskPhone(messengerPhone)),
 				zap.Int("daily_limit", cfg.Seeker.DailyLimit),
 				zap.Duration("delay", cfg.Seeker.Delay),
 				zap.String("store", app.seekerStore.Path()),
@@ -176,8 +190,11 @@ func (a *App) Run(ctx context.Context) error {
 	if a.seekerStore != nil {
 		defer a.seekerStore.Close()
 	}
-	if a.rateStore != nil {
-		defer a.rateStore.Close()
+	if a.employerRateStore != nil {
+		defer a.employerRateStore.Close()
+	}
+	if a.seekerRateStore != nil {
+		defer a.seekerRateStore.Close()
 	}
 
 	ready := make(chan struct{})
@@ -337,15 +354,19 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 		channelKeyNorm := telegram.NormalizeChannelKey(source)
 
 		if telegram.IsJobSeeker(post) {
-			a.saveJobSeekerPost(ctx, channelKeyNorm, source, post, body)
+			adUser, adPhone := outreach.SeekerAdContacts(body, post.PosterUsername, post.PosterPhone, a.contactSkip)
+			a.saveJobSeekerPost(ctx, channelKeyNorm, source, post, body, adUser, adPhone)
 			if a.outreach != nil {
 				if target := a.outreach.HandleSeekerPost(ctx, outreach.PostInfo{
 					SourceChannel:  source,
 					MessageID:      post.MessageID,
+					Body:           body,
 					Text:           post.Text,
 					Caption:        post.Caption,
 					PosterUsername: post.PosterUsername,
 					PosterPhone:    post.PosterPhone,
+					AdUsername:     adUser,
+					AdPhone:        adPhone,
 				}); target != nil {
 					a.updateJobSeekerDM(ctx, channelKeyNorm, post.MessageID, *target)
 				}
@@ -562,11 +583,10 @@ func (a *App) updateVacancyDM(ctx context.Context, sourceChannel string, message
 	}
 }
 
-func (a *App) saveJobSeekerPost(ctx context.Context, sourceChannel, source string, post telegram.Post, body string) {
+func (a *App) saveJobSeekerPost(ctx context.Context, sourceChannel, source string, post telegram.Post, body, adUser, adPhone string) {
 	if !a.ensureDB() {
 		return
 	}
-	adUser, adPhone := outreach.SeekerAdContacts(body, post.PosterUsername, post.PosterPhone, a.contactSkip)
 	messageLink := a.reader.MessageLink(ctx, source, post.MessageID)
 	if err := a.db.SaveJobSeekerPost(ctx, db.JobSeekerPost{
 		SourceChannel:     sourceChannel,
