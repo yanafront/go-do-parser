@@ -25,6 +25,7 @@ func (f ListFilter) jobSeekerWhere(startArg int) (string, []any, int) {
 var vacancySearchCols = []string{
 	"body",
 	"source_channel",
+	"COALESCE(source_message_link, '')",
 	"COALESCE(ad_username, '')",
 	"COALESCE(ad_phone, '')",
 	"COALESCE(dm_contact, '')",
@@ -33,7 +34,9 @@ var vacancySearchCols = []string{
 var jobSeekerSearchCols = []string{
 	"body",
 	"source_channel",
+	"COALESCE(source_message_link, '')",
 	"COALESCE(poster_username, '')",
+	"COALESCE(poster_phone, '')",
 	"COALESCE(ad_username, '')",
 	"COALESCE(ad_phone, '')",
 	"COALESCE(dm_contact, '')",
@@ -44,7 +47,7 @@ func (f ListFilter) buildWhere(startArg int, searchCols []string) (string, []any
 	var args []any
 	n := startArg
 
-	search := strings.TrimSpace(f.Search)
+	search := normalizeSearch(f.Search)
 	if search != "" {
 		pattern := "%" + strings.ToLower(search) + "%"
 		var conds []string
@@ -56,9 +59,9 @@ func (f ListFilter) buildWhere(startArg int, searchCols []string) (string, []any
 		n++
 	}
 
-	channel := strings.TrimSpace(strings.TrimPrefix(f.Channel, "@"))
+	channel := normalizeSearch(f.Channel)
 	if channel != "" {
-		parts = append(parts, fmt.Sprintf("source_channel = $%d", n))
+		parts = append(parts, fmt.Sprintf("LOWER(source_channel) = LOWER($%d)", n))
 		args = append(args, channel)
 		n++
 	}
@@ -121,4 +124,12 @@ ORDER BY source_channel
 		out = append(out, ch)
 	}
 	return out, rows.Err()
+}
+
+func normalizeSearch(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "@")
+	s = strings.TrimPrefix(s, "https://t.me/")
+	s = strings.TrimPrefix(s, "t.me/")
+	return s
 }

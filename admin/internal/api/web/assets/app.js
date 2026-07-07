@@ -57,6 +57,16 @@ function messageLink(row) {
   return '';
 }
 
+function formatContact(username, phone) {
+  if (username) {
+    const u = String(username);
+    if (/^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(u)) return `@${esc(u)}`;
+    return esc(u);
+  }
+  if (phone) return esc(phone);
+  return '—';
+}
+
 function linkCell(row) {
   const url = messageLink(row);
   if (!url) return '—';
@@ -84,6 +94,7 @@ function channelType() {
 }
 
 function buildQuery() {
+  syncFiltersFromDOM();
   const f = currentFilters();
   const params = new URLSearchParams({
     limit: String(state.limit),
@@ -100,8 +111,9 @@ function buildQuery() {
 async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(path, { ...options, headers, cache: 'no-store' });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) throw new Error('unauthorized');
   if (!res.ok) throw new Error(data.error || 'request failed');
   return data;
 }
@@ -203,12 +215,19 @@ function readFiltersFromForm() {
   };
 }
 
+function syncFiltersFromDOM() {
+  if (!document.getElementById('filter-q')) return;
+  readFiltersFromForm();
+}
+
+async function applyFilters() {
+  readFiltersFromForm();
+  setCurrentOffset(0);
+  await reloadTable();
+}
+
 function bindFilters() {
-  document.getElementById('apply-filters').onclick = async () => {
-    readFiltersFromForm();
-    setCurrentOffset(0);
-    await reloadTable();
-  };
+  document.getElementById('apply-filters').onclick = () => applyFilters();
   document.getElementById('reset-filters').onclick = async () => {
     state.filters[tabKey()] = emptyFilters();
     setCurrentOffset(0);
@@ -217,10 +236,11 @@ function bindFilters() {
   document.getElementById('filter-q').addEventListener('keydown', async (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      readFiltersFromForm();
-      setCurrentOffset(0);
-      await reloadTable();
+      await applyFilters();
     }
+  });
+  ['filter-channel', 'filter-dm', 'filter-from', 'filter-to'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('change', () => applyFilters());
   });
 }
 
@@ -270,7 +290,6 @@ async function renderApp() {
 }
 
 async function reloadTable() {
-  if (state.loadingTable) return;
   state.loadingTable = true;
   const content = document.getElementById('content');
   if (content) content.innerHTML = '<div class="loading">Загрузка...</div>';
@@ -279,8 +298,14 @@ async function reloadTable() {
     if (state.tab === 'vacancies') await renderVacancies();
     else await renderSeekers();
     content?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch {
-    logout();
+  } catch (err) {
+    if (err.message === 'unauthorized') {
+      logout();
+      return;
+    }
+    if (content) {
+      content.innerHTML = `<div class="error">Ошибка загрузки: ${esc(err.message)}</div>`;
+    }
   } finally {
     state.loadingTable = false;
   }
@@ -307,7 +332,7 @@ async function renderVacancies() {
       <td data-label="ID">${v.id}</td>
       <td data-label="Канал">@${esc(v.source_channel)}</td>
       <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
-      <td data-label="Контакт в объявлении">${esc(v.ad_username ? '@' + v.ad_username : v.ad_phone)}</td>
+      <td data-label="Контакт в объявлении">${formatContact(v.ad_username, v.ad_phone)}</td>
       <td data-label="DM кому">${esc(v.dm_contact)}</td>
       <td data-label="DM когда">${fmtDate(v.dm_sent_at)}</td>
       <td data-label="Опубликовано">${fmtDate(v.published_at)}</td>
@@ -340,8 +365,8 @@ async function renderSeekers() {
       <td data-label="ID">${v.id}</td>
       <td data-label="Канал">@${esc(v.source_channel)}</td>
       <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
-      <td data-label="Автор">@${esc(v.poster_username)}</td>
-      <td data-label="Контакт">${esc(v.ad_username ? '@' + v.ad_username : v.ad_phone)}</td>
+      <td data-label="Автор">${formatContact(v.poster_username, v.poster_phone)}</td>
+      <td data-label="Контакт">${formatContact(v.ad_username, v.ad_phone)}</td>
       <td data-label="DM кому">${esc(v.dm_contact)}</td>
       <td data-label="DM когда">${fmtDate(v.dm_sent_at)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>

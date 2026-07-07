@@ -53,6 +53,60 @@ func ExtractAdContacts(text string, skip map[string]bool) (username, phone strin
 	return username, phone
 }
 
+func SeekerAdContacts(body, posterUsername, posterPhone string, skip map[string]bool) (adUsername, adPhone string) {
+	adUsername, adPhone = ExtractAdContacts(body, skip)
+	if adUsername != "" || adPhone != "" {
+		return adUsername, adPhone
+	}
+	if posterUsername != "" && isTelegramUsername(posterUsername) {
+		if u, ok := ExtractUsername("@"+strings.TrimPrefix(posterUsername, "@"), skip); ok {
+			return u.Raw, ""
+		}
+	}
+	if posterPhone != "" {
+		p := normalizePhone(posterPhone)
+		if isBelarusPhone(p) {
+			return "", p
+		}
+	}
+	return "", ""
+}
+
+func SeekerTarget(text, posterUsername, posterPhone string, skip map[string]bool) (Target, bool) {
+	if t, ok := ExtractSeekerTarget(text, skip); ok {
+		return t, true
+	}
+	if posterUsername != "" && isTelegramUsername(posterUsername) {
+		if t, ok := ExtractUsername("@"+strings.TrimPrefix(posterUsername, "@"), skip); ok {
+			return t, true
+		}
+	}
+	if posterPhone != "" {
+		p := normalizePhone(posterPhone)
+		if isBelarusPhone(p) {
+			return Target{Key: "p:" + p, Type: "phone", Raw: p}, true
+		}
+	}
+	return Target{}, false
+}
+
+func isTelegramUsername(s string) bool {
+	s = strings.TrimPrefix(strings.TrimSpace(s), "@")
+	if len(s) < 5 || len(s) > 32 {
+		return false
+	}
+	if !((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z')) {
+		return false
+	}
+	for _, c := range s {
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func ExtractSeekerContacts(text string, skip map[string]bool) (poster, adUser, adPhone string) {
 	seen := make(map[string]bool)
 	var usernames []string

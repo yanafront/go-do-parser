@@ -147,9 +147,11 @@ func bearerToken(r *http.Request) string {
 
 func listFilterParams(r *http.Request) db.ListFilter {
 	q := r.URL.Query()
+	search := strings.TrimSpace(q.Get("q"))
+	search = strings.TrimPrefix(search, "@")
 	return db.ListFilter{
-		Search:   strings.TrimSpace(q.Get("q")),
-		Channel:  strings.TrimSpace(q.Get("channel")),
+		Search:   search,
+		Channel:  strings.TrimSpace(strings.TrimPrefix(q.Get("channel"), "@")),
 		HasDM:    strings.TrimSpace(q.Get("has_dm")),
 		DateFrom: strings.TrimSpace(q.Get("date_from")),
 		DateTo:   strings.TrimSpace(q.Get("date_to")),

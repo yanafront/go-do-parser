@@ -36,7 +36,16 @@ func Open(databaseURL string) (*DB, error) {
 			sqlDB.Close()
 			continue
 		}
-		return &DB{sql: sqlDB}, nil
+		db := &DB{sql: sqlDB}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		err = db.ensureSchema(ctx)
+		cancel()
+		if err != nil {
+			sqlDB.Close()
+			lastErr = err
+			continue
+		}
+		return db, nil
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no connection variants")
@@ -91,4 +100,16 @@ func (db *DB) Close() error {
 		return nil
 	}
 	return db.sql.Close()
+}
+
+func (db *DB) ensureSchema(ctx context.Context) error {
+	_, err := db.sql.ExecContext(ctx, `
+ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS source_message_link TEXT;
+ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS source_message_link TEXT;
+ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS poster_phone TEXT;
+`)
+	if err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+	return nil
 }

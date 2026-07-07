@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS job_seeker_posts (
     source_message_link TEXT,
     body TEXT NOT NULL,
     poster_username TEXT,
+    poster_phone TEXT,
     ad_username TEXT,
     ad_phone TEXT,
     dm_contact TEXT,
@@ -191,6 +192,7 @@ CREATE TABLE IF NOT EXISTS job_seeker_posts (
 
 ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS source_message_link TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS source_message_link TEXT;
+ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS poster_phone TEXT;
 `)
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)

@@ -11,8 +11,9 @@ type JobSeekerPost struct {
 	SourceMessageID   int
 	SourceMessageLink string
 	Body              string
-	PosterUsername  string
-	AdUsername      string
+	PosterUsername    string
+	PosterPhone       string
+	AdUsername        string
 	AdPhone         string
 	DMContact       string
 	DMContactType   string
@@ -23,15 +24,16 @@ func (db *DB) SaveJobSeekerPost(ctx context.Context, p JobSeekerPost) error {
 	_, err := db.sql.ExecContext(ctx, `
 INSERT INTO job_seeker_posts (
     source_channel, source_message_id, source_message_link, body,
-    poster_username, ad_username, ad_phone,
+    poster_username, poster_phone, ad_username, ad_phone,
     dm_contact, dm_contact_type, dm_sent_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (source_channel, source_message_id) DO UPDATE SET
     source_message_link = COALESCE(EXCLUDED.source_message_link, job_seeker_posts.source_message_link),
     body = EXCLUDED.body,
-    poster_username = EXCLUDED.poster_username,
-    ad_username = EXCLUDED.ad_username,
-    ad_phone = EXCLUDED.ad_phone,
+    poster_username = COALESCE(NULLIF(EXCLUDED.poster_username, ''), job_seeker_posts.poster_username),
+    poster_phone = COALESCE(NULLIF(EXCLUDED.poster_phone, ''), job_seeker_posts.poster_phone),
+    ad_username = COALESCE(NULLIF(EXCLUDED.ad_username, ''), job_seeker_posts.ad_username),
+    ad_phone = COALESCE(NULLIF(EXCLUDED.ad_phone, ''), job_seeker_posts.ad_phone),
     dm_contact = COALESCE(EXCLUDED.dm_contact, job_seeker_posts.dm_contact),
     dm_contact_type = COALESCE(EXCLUDED.dm_contact_type, job_seeker_posts.dm_contact_type),
     dm_sent_at = COALESCE(EXCLUDED.dm_sent_at, job_seeker_posts.dm_sent_at)
@@ -41,6 +43,7 @@ ON CONFLICT (source_channel, source_message_id) DO UPDATE SET
 		nullStr(p.SourceMessageLink),
 		p.Body,
 		nullStr(p.PosterUsername),
+		nullStr(p.PosterPhone),
 		nullStr(p.AdUsername),
 		nullStr(p.AdPhone),
 		nullStr(p.DMContact),

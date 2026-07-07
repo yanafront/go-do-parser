@@ -337,13 +337,15 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 		channelKeyNorm := telegram.NormalizeChannelKey(source)
 
 		if telegram.IsJobSeeker(post) {
-			a.saveJobSeekerPost(ctx, channelKeyNorm, post.MessageID, body)
+			a.saveJobSeekerPost(ctx, channelKeyNorm, source, post, body)
 			if a.outreach != nil {
 				if target := a.outreach.HandleSeekerPost(ctx, outreach.PostInfo{
-					SourceChannel: source,
-					MessageID:     post.MessageID,
-					Text:          post.Text,
-					Caption:       post.Caption,
+					SourceChannel:  source,
+					MessageID:      post.MessageID,
+					Text:           post.Text,
+					Caption:        post.Caption,
+					PosterUsername: post.PosterUsername,
+					PosterPhone:    post.PosterPhone,
 				}); target != nil {
 					a.updateJobSeekerDM(ctx, channelKeyNorm, post.MessageID, *target)
 				}
@@ -560,31 +562,32 @@ func (a *App) updateVacancyDM(ctx context.Context, sourceChannel string, message
 	}
 }
 
-func (a *App) saveJobSeekerPost(ctx context.Context, sourceChannel string, messageID int, body string) {
+func (a *App) saveJobSeekerPost(ctx context.Context, sourceChannel, source string, post telegram.Post, body string) {
 	if !a.ensureDB() {
 		return
 	}
-	poster, adUser, adPhone := outreach.ExtractSeekerContacts(body, a.contactSkip)
-	messageLink := a.reader.MessageLink(ctx, sourceChannel, messageID)
+	adUser, adPhone := outreach.SeekerAdContacts(body, post.PosterUsername, post.PosterPhone, a.contactSkip)
+	messageLink := a.reader.MessageLink(ctx, source, post.MessageID)
 	if err := a.db.SaveJobSeekerPost(ctx, db.JobSeekerPost{
 		SourceChannel:     sourceChannel,
-		SourceMessageID:   messageID,
+		SourceMessageID:   post.MessageID,
 		SourceMessageLink: messageLink,
 		Body:              body,
-		PosterUsername:    poster,
+		PosterUsername:    post.PosterUsername,
+		PosterPhone:       post.PosterPhone,
 		AdUsername:        adUser,
 		AdPhone:           adPhone,
 	}); err != nil {
 		a.log.Warn("save job seeker post failed",
 			zap.String("source", sourceChannel),
-			zap.Int("message_id", messageID),
+			zap.Int("message_id", post.MessageID),
 			zap.Error(err),
 		)
 		return
 	}
 	a.log.Info("job seeker post saved",
 		zap.String("source", sourceChannel),
-		zap.Int("message_id", messageID),
+		zap.Int("message_id", post.MessageID),
 	)
 }
 

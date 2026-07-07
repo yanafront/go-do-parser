@@ -47,10 +47,12 @@ type sendJob struct {
 }
 
 type PostInfo struct {
-	SourceChannel string
-	MessageID     int
-	Text          string
-	Caption       string
+	SourceChannel  string
+	MessageID      int
+	Text           string
+	Caption        string
+	PosterUsername string
+	PosterPhone    string
 }
 
 func NewService(
@@ -204,7 +206,7 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 	}
 
 	text := postText(post)
-	target, ok := ExtractSeekerTarget(text, s.skip)
+	target, ok := SeekerTarget(text, post.PosterUsername, post.PosterPhone, s.skip)
 	if !ok {
 		s.log.Info("seeker skipped: no contact in post",
 			zap.String("source", post.SourceChannel),

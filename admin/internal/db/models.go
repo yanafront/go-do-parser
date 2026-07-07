@@ -29,6 +29,7 @@ type JobSeekerPost struct {
 	SourceMessageLink *string    `json:"source_message_link,omitempty"`
 	Body              string     `json:"body"`
 	PosterUsername  *string    `json:"poster_username,omitempty"`
+	PosterPhone     *string    `json:"poster_phone,omitempty"`
 	AdUsername      *string    `json:"ad_username,omitempty"`
 	AdPhone         *string    `json:"ad_phone,omitempty"`
 	DMContact       *string    `json:"dm_contact,omitempty"`
@@ -124,7 +125,7 @@ func (db *DB) ListJobSeekers(ctx context.Context, filter ListFilter, limit, offs
 
 	listQuery := fmt.Sprintf(`
 SELECT id, source_channel, source_message_id, source_message_link, body,
-       poster_username, ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, created_at
+       poster_username, poster_phone, ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, created_at
 FROM job_seeker_posts
 %s
 ORDER BY created_at DESC, id DESC
@@ -142,7 +143,7 @@ LIMIT $%d OFFSET $%d
 		var p JobSeekerPost
 		if err := rows.Scan(
 			&p.ID, &p.SourceChannel, &p.SourceMessageID, &p.SourceMessageLink, &p.Body,
-			&p.PosterUsername, &p.AdUsername, &p.AdPhone, &p.DMContact, &p.DMContactType, &p.DMSentAt, &p.CreatedAt,
+			&p.PosterUsername, &p.PosterPhone, &p.AdUsername, &p.AdPhone, &p.DMContact, &p.DMContactType, &p.DMSentAt, &p.CreatedAt,
 		); err != nil {
 			return nil, 0, err
 		}

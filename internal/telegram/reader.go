@@ -124,6 +124,7 @@ func (r *Reader) FetchNewPosts(ctx context.Context, channelUsername string, afte
 	}
 
 	messages := extractMessages(history)
+	users := extractUsers(history)
 	result := FetchResult{MaxID: afterID}
 	posts := make([]Post, 0)
 
@@ -134,7 +135,7 @@ func (r *Reader) FetchNewPosts(ctx context.Context, channelUsername string, afte
 		if msg.ID > result.MaxID {
 			result.MaxID = msg.ID
 		}
-		post, ok := messageToPost(username, msg)
+		post, ok := messageToPost(username, msg, users)
 		if !ok {
 			continue
 		}
@@ -251,15 +252,18 @@ func filterMessages(items []tg.MessageClass) []*tg.Message {
 	return out
 }
 
-func messageToPost(channelKey string, msg *tg.Message) (Post, bool) {
+func messageToPost(channelKey string, msg *tg.Message, users map[int64]*tg.User) (Post, bool) {
 	if msg.Out {
 		return Post{}, false
 	}
 
+	posterUser, posterPhone := messagePosterContact(msg, users)
 	post := Post{
-		SourceChannel: channelKey,
-		MessageID:     msg.ID,
-		Text:          msg.Message,
+		SourceChannel:  channelKey,
+		MessageID:      msg.ID,
+		Text:           msg.Message,
+		PosterUsername: posterUser,
+		PosterPhone:    posterPhone,
 	}
 
 	if msg.GroupedID != 0 {
