@@ -7,9 +7,10 @@ import (
 )
 
 type Vacancy struct {
-	SourceChannel   string
-	SourceMessageID int
-	DestMessageID   int
+	SourceChannel      string
+	SourceMessageID    int
+	SourceMessageLink  string
+	DestMessageID      int
 	Body            string
 	AdUsername      string
 	AdPhone         string
@@ -25,11 +26,12 @@ func (db *DB) SaveVacancy(ctx context.Context, v Vacancy) error {
 	}
 	_, err := db.sql.ExecContext(ctx, `
 INSERT INTO vacancies (
-    source_channel, source_message_id, dest_message_id, body,
+    source_channel, source_message_id, source_message_link, dest_message_id, body,
     ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, published_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (source_channel, source_message_id) DO UPDATE SET
     dest_message_id = EXCLUDED.dest_message_id,
+    source_message_link = COALESCE(EXCLUDED.source_message_link, vacancies.source_message_link),
     body = EXCLUDED.body,
     ad_username = EXCLUDED.ad_username,
     ad_phone = EXCLUDED.ad_phone,
@@ -40,6 +42,7 @@ ON CONFLICT (source_channel, source_message_id) DO UPDATE SET
 `,
 		v.SourceChannel,
 		v.SourceMessageID,
+		nullStr(v.SourceMessageLink),
 		nullInt(v.DestMessageID),
 		v.Body,
 		nullStr(v.AdUsername),

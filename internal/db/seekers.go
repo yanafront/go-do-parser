@@ -7,9 +7,10 @@ import (
 )
 
 type JobSeekerPost struct {
-	SourceChannel   string
-	SourceMessageID int
-	Body            string
+	SourceChannel     string
+	SourceMessageID   int
+	SourceMessageLink string
+	Body              string
 	PosterUsername  string
 	AdUsername      string
 	AdPhone         string
@@ -21,11 +22,12 @@ type JobSeekerPost struct {
 func (db *DB) SaveJobSeekerPost(ctx context.Context, p JobSeekerPost) error {
 	_, err := db.sql.ExecContext(ctx, `
 INSERT INTO job_seeker_posts (
-    source_channel, source_message_id, body,
+    source_channel, source_message_id, source_message_link, body,
     poster_username, ad_username, ad_phone,
     dm_contact, dm_contact_type, dm_sent_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (source_channel, source_message_id) DO UPDATE SET
+    source_message_link = COALESCE(EXCLUDED.source_message_link, job_seeker_posts.source_message_link),
     body = EXCLUDED.body,
     poster_username = EXCLUDED.poster_username,
     ad_username = EXCLUDED.ad_username,
@@ -36,6 +38,7 @@ ON CONFLICT (source_channel, source_message_id) DO UPDATE SET
 `,
 		p.SourceChannel,
 		p.SourceMessageID,
+		nullStr(p.SourceMessageLink),
 		p.Body,
 		nullStr(p.PosterUsername),
 		nullStr(p.AdUsername),

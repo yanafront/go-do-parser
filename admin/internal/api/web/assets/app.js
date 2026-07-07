@@ -49,6 +49,20 @@ function fmtDate(v) {
   return new Date(v).toLocaleString('ru-RU');
 }
 
+function messageLink(row) {
+  if (row.source_message_link) return row.source_message_link;
+  if (row.source_channel && row.source_message_id) {
+    return `https://t.me/${String(row.source_channel).replace(/^@/, '')}/${row.source_message_id}`;
+  }
+  return '';
+}
+
+function linkCell(row) {
+  const url = messageLink(row);
+  if (!url) return '—';
+  return `<a href="${attrEsc(url)}" target="_blank" rel="noopener noreferrer">Открыть</a>`;
+}
+
 function tabKey() {
   return state.tab === 'vacancies' ? 'vacancies' : 'seekers';
 }
@@ -292,6 +306,7 @@ async function renderVacancies() {
     <tr>
       <td data-label="ID">${v.id}</td>
       <td data-label="Канал">@${esc(v.source_channel)}</td>
+      <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
       <td data-label="Контакт в объявлении">${esc(v.ad_username ? '@' + v.ad_username : v.ad_phone)}</td>
       <td data-label="DM кому">${esc(v.dm_contact)}</td>
       <td data-label="DM когда">${fmtDate(v.dm_sent_at)}</td>
@@ -301,14 +316,16 @@ async function renderVacancies() {
   `).join('');
   document.getElementById('content').innerHTML = `
     ${filtersHTML()}
+    <div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Канал</th><th>Контакт</th><th>DM</th><th>DM время</th><th>Публикация</th><th>Текст</th>
+          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>DM</th><th>DM время</th><th>Публикация</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="7">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="8">Ничего не найдено</td></tr>'}</tbody>
     </table>
+    </div>
     ${pagerHTML(data)}
   `;
   bindFilters();
@@ -322,6 +339,7 @@ async function renderSeekers() {
     <tr>
       <td data-label="ID">${v.id}</td>
       <td data-label="Канал">@${esc(v.source_channel)}</td>
+      <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
       <td data-label="Автор">@${esc(v.poster_username)}</td>
       <td data-label="Контакт">${esc(v.ad_username ? '@' + v.ad_username : v.ad_phone)}</td>
       <td data-label="DM кому">${esc(v.dm_contact)}</td>
@@ -331,14 +349,16 @@ async function renderSeekers() {
   `).join('');
   document.getElementById('content').innerHTML = `
     ${filtersHTML()}
+    <div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Канал</th><th>Автор</th><th>Контакт</th><th>DM</th><th>DM время</th><th>Текст</th>
+          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>DM</th><th>DM время</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="7">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="8">Ничего не найдено</td></tr>'}</tbody>
     </table>
+    </div>
     ${pagerHTML(data)}
   `;
   bindFilters();

@@ -7,7 +7,7 @@ body {
   min-height: 100vh;
 }
 a { color: #1d9bf0; }
-.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
 .card {
   background: #16181c;
   border: 1px solid #2f3336;
@@ -123,6 +123,9 @@ table {
   border-collapse: collapse;
   font-size: 14px;
 }
+.table-wrap {
+  overflow-x: auto;
+}
 th, td {
   border-bottom: 1px solid #2f3336;
   padding: 12px 10px;
@@ -130,7 +133,10 @@ th, td {
   vertical-align: top;
 }
 th { color: #71767b; font-weight: 600; }
-.body-cell { max-width: 360px; white-space: pre-wrap; word-break: break-word; }
+.body-cell { min-width: 420px; max-width: 640px; white-space: pre-wrap; word-break: break-word; }
+.link-cell { min-width: 120px; max-width: 180px; word-break: break-all; }
+.link-cell a { text-decoration: none; }
+.link-cell a:hover { text-decoration: underline; }
 .pager {
   display: flex;
   justify-content: space-between;

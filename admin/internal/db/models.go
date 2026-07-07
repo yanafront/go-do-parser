@@ -7,10 +7,11 @@ import (
 )
 
 type Vacancy struct {
-	ID              int64      `json:"id"`
-	SourceChannel   string     `json:"source_channel"`
-	SourceMessageID int        `json:"source_message_id"`
-	DestMessageID   *int       `json:"dest_message_id,omitempty"`
+	ID                int64      `json:"id"`
+	SourceChannel     string     `json:"source_channel"`
+	SourceMessageID   int        `json:"source_message_id"`
+	SourceMessageLink *string    `json:"source_message_link,omitempty"`
+	DestMessageID     *int       `json:"dest_message_id,omitempty"`
 	Body            string     `json:"body"`
 	AdUsername      *string    `json:"ad_username,omitempty"`
 	AdPhone         *string    `json:"ad_phone,omitempty"`
@@ -22,10 +23,11 @@ type Vacancy struct {
 }
 
 type JobSeekerPost struct {
-	ID              int64      `json:"id"`
-	SourceChannel   string     `json:"source_channel"`
-	SourceMessageID int        `json:"source_message_id"`
-	Body            string     `json:"body"`
+	ID                int64      `json:"id"`
+	SourceChannel     string     `json:"source_channel"`
+	SourceMessageID   int        `json:"source_message_id"`
+	SourceMessageLink *string    `json:"source_message_link,omitempty"`
+	Body              string     `json:"body"`
 	PosterUsername  *string    `json:"poster_username,omitempty"`
 	AdUsername      *string    `json:"ad_username,omitempty"`
 	AdPhone         *string    `json:"ad_phone,omitempty"`
@@ -75,7 +77,7 @@ func (db *DB) ListVacancies(ctx context.Context, filter ListFilter, limit, offse
 	}
 
 	listQuery := fmt.Sprintf(`
-SELECT id, source_channel, source_message_id, dest_message_id, body,
+SELECT id, source_channel, source_message_id, source_message_link, dest_message_id, body,
        ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at,
        published_at, created_at
 FROM vacancies
@@ -94,7 +96,7 @@ LIMIT $%d OFFSET $%d
 	for rows.Next() {
 		var v Vacancy
 		if err := rows.Scan(
-			&v.ID, &v.SourceChannel, &v.SourceMessageID, &v.DestMessageID, &v.Body,
+			&v.ID, &v.SourceChannel, &v.SourceMessageID, &v.SourceMessageLink, &v.DestMessageID, &v.Body,
 			&v.AdUsername, &v.AdPhone, &v.DMContact, &v.DMContactType, &v.DMSentAt,
 			&v.PublishedAt, &v.CreatedAt,
 		); err != nil {
@@ -121,7 +123,7 @@ func (db *DB) ListJobSeekers(ctx context.Context, filter ListFilter, limit, offs
 	}
 
 	listQuery := fmt.Sprintf(`
-SELECT id, source_channel, source_message_id, body,
+SELECT id, source_channel, source_message_id, source_message_link, body,
        poster_username, ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, created_at
 FROM job_seeker_posts
 %s
@@ -139,7 +141,7 @@ LIMIT $%d OFFSET $%d
 	for rows.Next() {
 		var p JobSeekerPost
 		if err := rows.Scan(
-			&p.ID, &p.SourceChannel, &p.SourceMessageID, &p.Body,
+			&p.ID, &p.SourceChannel, &p.SourceMessageID, &p.SourceMessageLink, &p.Body,
 			&p.PosterUsername, &p.AdUsername, &p.AdPhone, &p.DMContact, &p.DMContactType, &p.DMSentAt, &p.CreatedAt,
 		); err != nil {
 			return nil, 0, err

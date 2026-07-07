@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
     id BIGSERIAL PRIMARY KEY,
     source_channel TEXT NOT NULL,
     source_message_id INTEGER NOT NULL,
+    source_message_link TEXT,
     dest_message_id INTEGER,
     body TEXT NOT NULL,
     ad_username TEXT,
@@ -176,6 +177,7 @@ CREATE TABLE IF NOT EXISTS job_seeker_posts (
     id BIGSERIAL PRIMARY KEY,
     source_channel TEXT NOT NULL,
     source_message_id INTEGER NOT NULL,
+    source_message_link TEXT,
     body TEXT NOT NULL,
     poster_username TEXT,
     ad_username TEXT,
@@ -186,6 +188,9 @@ CREATE TABLE IF NOT EXISTS job_seeker_posts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (source_channel, source_message_id)
 );
+
+ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS source_message_link TEXT;
+ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS source_message_link TEXT;
 `)
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)

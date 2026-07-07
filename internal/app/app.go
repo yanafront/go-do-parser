@@ -522,14 +522,16 @@ func (a *App) saveVacancy(ctx context.Context, sourceChannel string, messageID, 
 		return
 	}
 	adUser, adPhone := outreach.ExtractAdContacts(body, a.contactSkip)
+	messageLink := a.reader.MessageLink(ctx, sourceChannel, messageID)
 	if err := a.db.SaveVacancy(ctx, db.Vacancy{
-		SourceChannel:   sourceChannel,
-		SourceMessageID: messageID,
-		DestMessageID:   destID,
-		Body:            body,
-		AdUsername:      adUser,
-		AdPhone:         adPhone,
-		PublishedAt:     time.Now().UTC(),
+		SourceChannel:     sourceChannel,
+		SourceMessageID:   messageID,
+		SourceMessageLink: messageLink,
+		DestMessageID:     destID,
+		Body:              body,
+		AdUsername:        adUser,
+		AdPhone:           adPhone,
+		PublishedAt:       time.Now().UTC(),
 	}); err != nil {
 		a.log.Warn("save vacancy failed",
 			zap.String("source", sourceChannel),
@@ -563,13 +565,15 @@ func (a *App) saveJobSeekerPost(ctx context.Context, sourceChannel string, messa
 		return
 	}
 	poster, adUser, adPhone := outreach.ExtractSeekerContacts(body, a.contactSkip)
+	messageLink := a.reader.MessageLink(ctx, sourceChannel, messageID)
 	if err := a.db.SaveJobSeekerPost(ctx, db.JobSeekerPost{
-		SourceChannel:   sourceChannel,
-		SourceMessageID: messageID,
-		Body:            body,
-		PosterUsername:  poster,
-		AdUsername:      adUser,
-		AdPhone:         adPhone,
+		SourceChannel:     sourceChannel,
+		SourceMessageID:   messageID,
+		SourceMessageLink: messageLink,
+		Body:              body,
+		PosterUsername:    poster,
+		AdUsername:        adUser,
+		AdPhone:           adPhone,
 	}); err != nil {
 		a.log.Warn("save job seeker post failed",
 			zap.String("source", sourceChannel),
