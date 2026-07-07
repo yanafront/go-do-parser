@@ -195,7 +195,11 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) *Target {
 }
 
 func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
-	if !s.seekerCfg.Enabled() || s.seekerStore == nil {
+	if !s.seekerCfg.Active() || s.seekerStore == nil {
+		return nil
+	}
+	if strings.TrimSpace(s.seekerCfg.Message) == "" {
+		s.log.Warn("seeker dm skipped: SEEKER_MESSAGE is empty")
 		return nil
 	}
 	if !telegram.IsJobSeeker(telegram.Post{Text: post.Text, Caption: post.Caption}) {

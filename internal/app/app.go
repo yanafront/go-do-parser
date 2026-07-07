@@ -112,7 +112,7 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 				return nil, err
 			}
 		}
-		if cfg.Seeker.Enabled() {
+		if cfg.Seeker.Active() {
 			app.seekerStore, err = outreach.OpenStoreFile(cfg.Seeker.DataDir, "seeker.json")
 			if err != nil {
 				st.Close()
@@ -124,7 +124,7 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 			st.Close()
 			return nil, err
 		}
-		if cfg.Seeker.Enabled() {
+		if cfg.Seeker.Active() {
 			app.seekerRateStore, err = outreach.OpenStoreFile(cfg.Seeker.DataDir, "rate.json")
 			if err != nil {
 				st.Close()
@@ -167,9 +167,12 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 				zap.Int("daily_limit", cfg.Seeker.DailyLimit),
 				zap.Duration("delay", cfg.Seeker.Delay),
 				zap.String("store", app.seekerStore.Path()),
+				zap.Int("message_len", len(cfg.Seeker.Message)),
 			)
+		} else if cfg.Seeker.Active() {
+			log.Error("SEEKER_ENABLED=true but SEEKER_MESSAGE is empty, dm will not be sent")
 		}
-	} else if cfg.Seeker.ExplicitlyEnabled {
+	} else if cfg.Seeker.Active() {
 		log.Warn("seeker enabled but messenger not started",
 			zap.Bool("seeker_message_set", strings.TrimSpace(cfg.Seeker.Message) != ""),
 			zap.String("hint", "set SEEKER_MESSAGE and TG_PHONE+TG_SESSION or OUTREACH_PHONE+OUTREACH_SESSION"),
@@ -262,6 +265,7 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 func (a *App) syncOnce(ctx context.Context) error {
+	a.retryPendingSeekerDMs(ctx)
 	for _, source := range a.cfg.Telegram.Sources {
 		if err := a.syncChannel(ctx, source); err != nil {
 			a.log.Warn("channel sync failed",
@@ -370,7 +374,7 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 				}); target != nil {
 					a.updateJobSeekerDM(ctx, channelKeyNorm, post.MessageID, *target)
 				}
-			} else if a.cfg.Seeker.ExplicitlyEnabled {
+			} else if a.cfg.Seeker.Active() {
 				a.log.Warn("seeker post skipped: messenger not running",
 					zap.String("source", source),
 					zap.Int("message_id", post.MessageID),
@@ -622,5 +626,30 @@ func (a *App) updateJobSeekerDM(ctx context.Context, sourceChannel string, messa
 			zap.Int("message_id", messageID),
 			zap.Error(err),
 		)
+	}
+}
+
+func (a *App) retryPendingSeekerDMs(ctx context.Context) {
+	if a.outreach == nil || !a.cfg.Seeker.Enabled() || a.db == nil {
+		return
+	}
+	pending, err := a.db.ListPendingSeekerDMs(ctx, 3)
+	if err != nil {
+		a.log.Warn("list pending seeker dms failed", zap.Error(err))
+		return
+	}
+	for _, p := range pending {
+		if target := a.outreach.HandleSeekerPost(ctx, outreach.PostInfo{
+			SourceChannel:  p.SourceChannel,
+			MessageID:      p.SourceMessageID,
+			Body:           p.Body,
+			Text:           p.Body,
+			PosterUsername: p.PosterUsername,
+			PosterPhone:    p.PosterPhone,
+			AdUsername:     p.AdUsername,
+			AdPhone:        p.AdPhone,
+		}); target != nil {
+			a.updateJobSeekerDM(ctx, p.SourceChannel, p.SourceMessageID, *target)
+		}
 	}
 }

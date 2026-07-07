@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -64,11 +65,12 @@ type SeekerConfig struct {
 	ExplicitlyEnabled bool
 }
 
+func (c SeekerConfig) Active() bool {
+	return c.ExplicitlyEnabled
+}
+
 func (c SeekerConfig) Enabled() bool {
-	if !c.ExplicitlyEnabled {
-		return false
-	}
-	return strings.TrimSpace(c.Message) != ""
+	return c.Active() && strings.TrimSpace(c.Message) != ""
 }
 
 func (c *Config) MessengerEnabled() bool {
@@ -76,7 +78,7 @@ func (c *Config) MessengerEnabled() bool {
 	if phone == "" {
 		phone = strings.TrimSpace(c.Telegram.Phone)
 	}
-	return phone != "" && (c.Outreach.Enabled() || c.Seeker.Enabled())
+	return phone != "" && (c.Outreach.Enabled() || c.Seeker.Active())
 }
 
 type AppConfig struct {
@@ -208,6 +210,14 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("SEEKER_MESSAGE"); v != "" {
 		c.Seeker.Message = unescapeEnv(v)
 	}
+	if strings.TrimSpace(c.Seeker.Message) == "" {
+		if v := strings.TrimSpace(os.Getenv("SEEKER_MESSAGE_FILE")); v != "" {
+			data, err := os.ReadFile(v)
+			if err == nil {
+				c.Seeker.Message = string(data)
+			}
+		}
+	}
 	if v := os.Getenv("SEEKER_DATA_DIR"); v != "" {
 		c.Seeker.DataDir = v
 	}
@@ -257,6 +267,8 @@ func (c *Config) setDefaults() {
 	}
 	if c.Seeker.DataDir == "" {
 		c.Seeker.DataDir = c.App.DataDir + "/seeker"
+	} else if strings.HasPrefix(c.Seeker.DataDir, "./") {
+		c.Seeker.DataDir = filepath.Join(c.App.DataDir, strings.TrimPrefix(c.Seeker.DataDir, "./"))
 	}
 	if c.Seeker.DailyLimit == 0 {
 		c.Seeker.DailyLimit = 5
@@ -264,7 +276,7 @@ func (c *Config) setDefaults() {
 	if c.Seeker.Delay == 0 {
 		c.Seeker.Delay = 10 * time.Minute
 	}
-	if c.Seeker.Enabled() && strings.TrimSpace(c.Outreach.Phone) == "" {
+	if c.Seeker.Active() && strings.TrimSpace(c.Outreach.Phone) == "" {
 		c.Outreach.Phone = c.Telegram.Phone
 	}
 }
