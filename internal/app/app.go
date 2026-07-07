@@ -633,7 +633,7 @@ func (a *App) retryPendingSeekerDMs(ctx context.Context) {
 	if a.outreach == nil || !a.cfg.Seeker.Enabled() || a.db == nil {
 		return
 	}
-	pending, err := a.db.ListPendingSeekerDMs(ctx, 3)
+	pending, err := a.db.ListPendingSeekerDMs(ctx, 1)
 	if err != nil {
 		a.log.Warn("list pending seeker dms failed", zap.Error(err))
 		return

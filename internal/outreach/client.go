@@ -165,6 +165,14 @@ func (s *Service) HandlePost(ctx context.Context, post PostInfo) *Target {
 				zap.String("type", target.Type),
 				zap.Error(err),
 			)
+			if tgerr.Is(err, "PEER_FLOOD") && s.employerRateStore != nil {
+				_ = s.employerRateStore.PauseUntil(time.Now().Add(24 * time.Hour))
+			} else if wait, ok := tgerr.AsFloodWait(err); ok && s.employerRateStore != nil {
+				_ = s.employerRateStore.PauseUntil(time.Now().Add(wait))
+			}
+			if s.employerRateStore != nil {
+				_ = s.employerRateStore.TouchLastSent()
+			}
 			continue
 		}
 
@@ -210,7 +218,11 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 		return nil
 	}
 	if s.seekerRateStore == nil || !s.seekerRateStore.CanSendNow(s.seekerCfg.Delay) {
-		s.log.Info("seeker cooldown", zap.Duration("delay", s.seekerCfg.Delay))
+		if s.seekerRateStore != nil && s.seekerRateStore.IsPaused() {
+			s.log.Info("seeker paused by Telegram limit")
+		} else {
+			s.log.Info("seeker cooldown", zap.Duration("delay", s.seekerCfg.Delay))
+		}
 		return nil
 	}
 
@@ -236,10 +248,7 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 	}
 
 	if err := s.send(ctx, target, s.seekerCfg.Message); err != nil {
-		s.log.Warn("seeker send failed",
-			zap.String("target", target.Raw),
-			zap.Error(err),
-		)
+		s.onSeekerSendFailed(target, post, err)
 		return nil
 	}
 
@@ -264,6 +273,55 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 		zap.Int("daily_sent", s.seekerStore.DailySent()),
 	)
 	return &target
+}
+
+func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) {
+	msg := err.Error()
+	rec := Record{
+		Target:  target.Raw,
+		Type:    "skipped",
+		SentAt:  time.Now().UTC().Format(time.RFC3339),
+		Source:  post.SourceChannel,
+		Message: post.MessageID,
+	}
+
+	switch {
+	case tgerr.Is(err, "PEER_FLOOD"):
+		s.log.Error("seeker paused: Telegram PEER_FLOOD, account restricted for cold DM",
+			zap.String("target", target.Raw),
+			zap.String("phone", telegram.MaskPhone(s.phone)),
+		)
+		if s.seekerRateStore != nil {
+			_ = s.seekerRateStore.PauseUntil(time.Now().Add(24 * time.Hour))
+		}
+	case strings.Contains(msg, "not found in Telegram"), strings.Contains(msg, "is not a user account"):
+		s.log.Info("seeker skipped: unreachable contact",
+			zap.String("target", target.Raw),
+			zap.Error(err),
+		)
+		if s.seekerStore != nil {
+			_ = s.seekerStore.MarkSkipped(target.Key, rec)
+		}
+	default:
+		if wait, ok := tgerr.AsFloodWait(err); ok {
+			s.log.Warn("seeker flood wait",
+				zap.String("target", target.Raw),
+				zap.Duration("wait", wait),
+			)
+			if s.seekerRateStore != nil {
+				_ = s.seekerRateStore.PauseUntil(time.Now().Add(wait))
+			}
+		} else {
+			s.log.Warn("seeker send failed",
+				zap.String("target", target.Raw),
+				zap.Error(err),
+			)
+		}
+	}
+
+	if s.seekerRateStore != nil {
+		_ = s.seekerRateStore.TouchLastSent()
+	}
 }
 
 func postText(post PostInfo) string {

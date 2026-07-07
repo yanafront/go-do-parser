@@ -27,6 +27,7 @@ type diskState struct {
 	Contacted  map[string]Record `json:"contacted"`
 	Daily      map[string]int    `json:"daily"`
 	LastSentAt string            `json:"last_sent_at"`
+	PausedUntil string           `json:"paused_until,omitempty"`
 }
 
 func OpenStore(dataDir string) (*Store, error) {
@@ -125,6 +126,11 @@ func (s *Store) CanSendNow(minDelay time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensure()
+	if s.data.PausedUntil != "" {
+		if t, err := time.Parse(time.RFC3339, s.data.PausedUntil); err == nil && time.Now().Before(t) {
+			return false
+		}
+	}
 	if s.data.LastSentAt == "" {
 		return true
 	}
@@ -135,6 +141,28 @@ func (s *Store) CanSendNow(minDelay time.Duration) bool {
 	return time.Since(t) >= minDelay
 }
 
+func (s *Store) IsPaused() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensure()
+	if s.data.PausedUntil == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, s.data.PausedUntil)
+	if err != nil {
+		return false
+	}
+	return time.Now().Before(t)
+}
+
+func (s *Store) PauseUntil(until time.Time) error {
+	s.mu.Lock()
+	s.ensure()
+	s.data.PausedUntil = until.UTC().Format(time.RFC3339)
+	s.mu.Unlock()
+	return s.save()
+}
+
 func (s *Store) MarkSent(key string, rec Record) error {
 	s.mu.Lock()
 	s.ensure()
@@ -142,6 +170,14 @@ func (s *Store) MarkSent(key string, rec Record) error {
 	day := todayKey()
 	s.data.Daily[day]++
 	s.data.LastSentAt = time.Now().UTC().Format(time.RFC3339)
+	s.mu.Unlock()
+	return s.save()
+}
+
+func (s *Store) MarkSkipped(key string, rec Record) error {
+	s.mu.Lock()
+	s.ensure()
+	s.data.Contacted[key] = rec
 	s.mu.Unlock()
 	return s.save()
 }
