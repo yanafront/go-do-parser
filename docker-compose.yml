@@ -9,3 +9,13 @@ services:
       - ./data:/app/data
     env_file:
       - .env
+
+  onliner:
+    build: .
+    container_name: go-do-onliner
+    restart: unless-stopped
+    command: ["/app/onliner"]
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env

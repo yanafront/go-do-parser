@@ -3,6 +3,8 @@ package telegram
 import (
 	"regexp"
 	"strings"
+
+	"github.com/anadubesko/go-do-parser/internal/filter"
 )
 
 var belarusPhoneRE = regexp.MustCompile(`(?i)(?:\+?\s*375[\s\-]*\d{2}[\s\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}|8[\s\-]*0\d{2}[\s\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}|\+?\s*80\d{9})`)
@@ -36,8 +38,7 @@ func IsBlocked(post Post) bool {
 }
 
 func IsJobSeeker(post Post) bool {
-	text := strings.ToLower(postText(post))
-	return strings.Contains(text, "ищу подработку") || strings.Contains(text, "ищу работу")
+	return filter.IsJobSeekerText(postText(post))
 }
 
 func postText(post Post) string {

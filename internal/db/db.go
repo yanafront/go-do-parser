@@ -193,6 +193,22 @@ CREATE TABLE IF NOT EXISTS job_seeker_posts (
 ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS source_message_link TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS source_message_link TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS poster_phone TEXT;
+
+CREATE TABLE IF NOT EXISTS onliner_posts (
+    id BIGSERIAL PRIMARY KEY,
+    topic_id INTEGER NOT NULL UNIQUE,
+    topic_url TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    poster_user_id TEXT,
+    poster_username TEXT,
+    poster_profile_url TEXT,
+    phone TEXT,
+    email TEXT,
+    telegram TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    parsed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `)
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)

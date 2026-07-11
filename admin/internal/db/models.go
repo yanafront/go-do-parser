@@ -39,9 +39,26 @@ type JobSeekerPost struct {
 }
 
 type Stats struct {
-	Vacancies   int64 `json:"vacancies"`
-	JobSeekers  int64 `json:"job_seekers"`
-	DMSent      int64 `json:"dm_sent"`
+	Vacancies  int64 `json:"vacancies"`
+	JobSeekers int64 `json:"job_seekers"`
+	Onliner    int64 `json:"onliner"`
+	DMSent     int64 `json:"dm_sent"`
+}
+
+type OnlinerPost struct {
+	ID               int64   `json:"id"`
+	TopicID          int     `json:"topic_id"`
+	TopicURL         string  `json:"topic_url"`
+	Title            string  `json:"title"`
+	Body             string  `json:"body"`
+	PosterUserID     *string `json:"poster_user_id,omitempty"`
+	PosterUsername   *string `json:"poster_username,omitempty"`
+	PosterProfileURL *string `json:"poster_profile_url,omitempty"`
+	Phone            *string `json:"phone,omitempty"`
+	Email            *string `json:"email,omitempty"`
+	Telegram         *string `json:"telegram,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	ParsedAt         time.Time `json:"parsed_at"`
 }
 
 func (db *DB) Stats(ctx context.Context) (Stats, error) {
@@ -49,7 +66,10 @@ func (db *DB) Stats(ctx context.Context) (Stats, error) {
 	if err := db.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM vacancies`).Scan(&s.Vacancies); err != nil {
 		return s, err
 	}
-	if err := db.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM job_seeker_posts`).Scan(&s.JobSeekers); err != nil {
+	if err := db.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM job_seeker_posts WHERE source_channel NOT LIKE 'onliner:%'`).Scan(&s.JobSeekers); err != nil {
+		return s, err
+	}
+	if err := db.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM onliner_posts`).Scan(&s.Onliner); err != nil {
 		return s, err
 	}
 	if err := db.sql.QueryRowContext(ctx, `
@@ -116,9 +136,17 @@ func (db *DB) ListJobSeekers(ctx context.Context, filter ListFilter, limit, offs
 		offset = 0
 	}
 	where, args, nextArg := filter.jobSeekerWhere(1)
+	if where == "" {
+		where = "WHERE source_channel NOT LIKE 'onliner:%'"
+	} else {
+		where += " AND source_channel NOT LIKE 'onliner:%'"
+	}
 
 	var total int64
-	countQuery := "SELECT COUNT(*) FROM job_seeker_posts " + where
+	countQuery := "SELECT COUNT(*) FROM job_seeker_posts WHERE source_channel NOT LIKE 'onliner:%'"
+	if where != "" {
+		countQuery = "SELECT COUNT(*) FROM job_seeker_posts " + where
+	}
 	if err := db.sql.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}

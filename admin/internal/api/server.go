@@ -32,6 +32,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/channels", s.authRequired(http.HandlerFunc(s.handleChannels)))
 	mux.Handle("GET /api/vacancies", s.authRequired(http.HandlerFunc(s.handleVacancies)))
 	mux.Handle("GET /api/job-seekers", s.authRequired(http.HandlerFunc(s.handleJobSeekers)))
+	mux.Handle("GET /api/onliner-posts", s.authRequired(http.HandlerFunc(s.handleOnlinerPosts)))
 
 	webRoot, _ := fs.Sub(webFS, "web")
 	fileServer := http.FileServer(http.FS(webRoot))
@@ -109,6 +110,27 @@ func (s *Server) handleVacancies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, pageResponse(items, total, limit, offset))
+}
+
+func (s *Server) handleOnlinerPosts(w http.ResponseWriter, r *http.Request) {
+	limit, offset := pageParams(r)
+	filter := onlinerFilterParams(r)
+	items, total, err := s.db.ListOnlinerPosts(r.Context(), filter, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	writeJSON(w, http.StatusOK, pageResponse(items, total, limit, offset))
+}
+
+func onlinerFilterParams(r *http.Request) db.OnlinerListFilter {
+	q := r.URL.Query()
+	return db.OnlinerListFilter{
+		Search:     strings.TrimSpace(q.Get("q")),
+		HasContact: strings.TrimSpace(q.Get("has_contact")),
+		DateFrom:   strings.TrimSpace(q.Get("date_from")),
+		DateTo:     strings.TrimSpace(q.Get("date_to")),
+	}
 }
 
 func (s *Server) handleJobSeekers(w http.ResponseWriter, r *http.Request) {
