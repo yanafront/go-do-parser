@@ -1,0 +1,29 @@
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /onliner ./cmd/onliner
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+COPY --from=builder /onliner /app/onliner
+
+RUN adduser -D -u 10001 appuser && \
+    mkdir -p /app/data/onliner && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+ENV ONLINER_DATA_DIR=/app/data/onliner
+ENV ONLINER_POLL_INTERVAL=10m
+
+CMD ["/app/onliner"]

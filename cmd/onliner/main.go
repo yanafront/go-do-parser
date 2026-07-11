@@ -50,6 +50,14 @@ func main() {
 		RequestDelay:  cfg.RequestDelay,
 	}, store, database, log)
 
+	log.Info("onliner scraper started",
+		zap.String("data_dir", cfg.DataDir),
+		zap.Int("forum_id", cfg.ForumID),
+		zap.Int("forum_pages", cfg.ForumPages),
+		zap.Int("search_pages", cfg.SearchPages),
+		zap.Strings("search_queries", cfg.SearchQueries),
+	)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
