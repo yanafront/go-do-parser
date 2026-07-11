@@ -459,6 +459,7 @@ async function renderOnliner() {
       <td data-label="Контакты">${formatOnlinerContacts(v)}</td>
       <td data-label="Заголовок">${esc(v.title)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
+      <td data-label="Опубликовано">${fmtDate(v.posted_at)}</td>
       <td data-label="Спарсено">${fmtDate(v.parsed_at)}</td>
     </tr>
   `).join('');
@@ -468,10 +469,10 @@ async function renderOnliner() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Профиль</th><th>Контакты</th><th>Заголовок</th><th>Текст</th><th>Спарсено</th>
+          <th>ID</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Профиль</th><th>Контакты</th><th>Заголовок</th><th>Текст</th><th>Опубликовано</th><th>Спарсено</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="9">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="10">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}

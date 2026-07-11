@@ -123,6 +123,8 @@ CREATE TABLE IF NOT EXISTS onliner_posts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     parsed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE onliner_posts ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ;
 `)
 	if err != nil {
 		return fmt.Errorf("ensure schema: %w", err)

@@ -57,8 +57,9 @@ type OnlinerPost struct {
 	Phone            *string `json:"phone,omitempty"`
 	Email            *string `json:"email,omitempty"`
 	Telegram         *string `json:"telegram,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	ParsedAt         time.Time `json:"parsed_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	ParsedAt         time.Time  `json:"parsed_at"`
+	PostedAt         *time.Time `json:"posted_at,omitempty"`
 }
 
 func (db *DB) Stats(ctx context.Context) (Stats, error) {

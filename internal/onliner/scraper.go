@@ -12,11 +12,12 @@ import (
 )
 
 type Config struct {
-	ForumID      int
-	ForumPages   int
-	SearchPages  int
-	SearchQueries []string
-	RequestDelay time.Duration
+	ForumID         int
+	ForumPages      int
+	SearchPages     int
+	SearchQueries   []string
+	RequestDelay    time.Duration
+	MaxTopicAgeDays int
 }
 
 type Scraper struct {
@@ -85,14 +86,6 @@ func (s *Scraper) SyncOnce(ctx context.Context) error {
 func (s *Scraper) collectTopicRefs() ([]TopicRef, error) {
 	seen := make(map[int]TopicRef)
 
-	forumRefs, err := s.client.FetchForum(s.cfg.ForumID, 0, s.cfg.ForumPages)
-	if err != nil {
-		return nil, fmt.Errorf("fetch forum: %w", err)
-	}
-	for _, ref := range forumRefs {
-		seen[ref.ID] = ref
-	}
-
 	for _, query := range s.cfg.SearchQueries {
 		query = strings.TrimSpace(query)
 		if query == "" {
@@ -103,17 +96,25 @@ func (s *Scraper) collectTopicRefs() ([]TopicRef, error) {
 			return nil, fmt.Errorf("fetch search %q: %w", query, err)
 		}
 		for _, ref := range searchRefs {
-			if existing, ok := seen[ref.ID]; ok && ref.Title != "" && existing.Title == "" {
-				existing.Title = ref.Title
-				seen[ref.ID] = existing
-				continue
-			}
 			seen[ref.ID] = ref
 		}
 		time.Sleep(s.cfg.RequestDelay)
 	}
 
-	return refsFromMap(seen), nil
+	forumRefs, err := s.client.FetchForum(s.cfg.ForumID, 0, s.cfg.ForumPages)
+	if err != nil {
+		return nil, fmt.Errorf("fetch forum: %w", err)
+	}
+	for _, ref := range forumRefs {
+		if existing, ok := seen[ref.ID]; ok && ref.Title != "" && existing.Title == "" {
+			existing.Title = ref.Title
+			seen[ref.ID] = existing
+			continue
+		}
+		seen[ref.ID] = ref
+	}
+
+	return sortRefsByIDDesc(seen), nil
 }
 
 func (s *Scraper) processTopic(ctx context.Context, ref TopicRef) (bool, error) {
@@ -133,6 +134,16 @@ func (s *Scraper) processTopic(ctx context.Context, ref TopicRef) (bool, error) 
 		return false, nil
 	}
 
+	if s.cfg.MaxTopicAgeDays > 0 && topic.PostedAt != nil {
+		cutoff := time.Now().AddDate(0, 0, -s.cfg.MaxTopicAgeDays)
+		if topic.PostedAt.Before(cutoff) {
+			if err := s.store.MarkSeen(ref.ID); err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+	}
+
 	contacts := ExtractContacts(topicSearchText(topic))
 
 	if err := s.db.SaveOnlinerPost(ctx, db.OnlinerPost{
@@ -146,6 +157,7 @@ func (s *Scraper) processTopic(ctx context.Context, ref TopicRef) (bool, error) 
 		Phone:            contacts.Phone,
 		Email:            contacts.Email,
 		Telegram:         contacts.Telegram,
+		PostedAt:         topic.PostedAt,
 	}); err != nil {
 		return false, err
 	}

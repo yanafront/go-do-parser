@@ -43,11 +43,12 @@ func main() {
 	}
 
 	scraper := onliner.NewScraper(onliner.Config{
-		ForumID:       cfg.ForumID,
-		ForumPages:    cfg.ForumPages,
-		SearchPages:   cfg.SearchPages,
-		SearchQueries: cfg.SearchQueries,
-		RequestDelay:  cfg.RequestDelay,
+		ForumID:         cfg.ForumID,
+		ForumPages:      cfg.ForumPages,
+		SearchPages:     cfg.SearchPages,
+		SearchQueries:   cfg.SearchQueries,
+		RequestDelay:    cfg.RequestDelay,
+		MaxTopicAgeDays: cfg.MaxTopicAgeDays,
 	}, store, database, log)
 
 	log.Info("onliner scraper started",

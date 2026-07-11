@@ -23,10 +23,10 @@ func (db *DB) ListOnlinerPosts(ctx context.Context, filter OnlinerListFilter, li
 	listQuery := fmt.Sprintf(`
 SELECT id, topic_id, topic_url, title, body,
        poster_user_id, poster_username, poster_profile_url,
-       phone, email, telegram, created_at, parsed_at
+       phone, email, telegram, created_at, parsed_at, posted_at
 FROM onliner_posts
 %s
-ORDER BY parsed_at DESC, id DESC
+ORDER BY COALESCE(posted_at, parsed_at) DESC, id DESC
 LIMIT $%d OFFSET $%d
 `, where, nextArg, nextArg+1)
 	listArgs := append(append([]any{}, args...), limit, offset)
@@ -42,7 +42,7 @@ LIMIT $%d OFFSET $%d
 		if err := rows.Scan(
 			&p.ID, &p.TopicID, &p.TopicURL, &p.Title, &p.Body,
 			&p.PosterUserID, &p.PosterUsername, &p.PosterProfileURL,
-			&p.Phone, &p.Email, &p.Telegram, &p.CreatedAt, &p.ParsedAt,
+			&p.Phone, &p.Email, &p.Telegram, &p.CreatedAt, &p.ParsedAt, &p.PostedAt,
 		); err != nil {
 			return nil, 0, err
 		}

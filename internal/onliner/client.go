@@ -63,7 +63,7 @@ func (c *Client) FetchForum(forumID, start, pages int) ([]TopicRef, error) {
 			seen[ref.ID] = ref
 		}
 	}
-	return refsFromMap(seen), nil
+	return sortRefsByIDDesc(seen), nil
 }
 
 func (c *Client) FetchSearch(query string, pages int) ([]TopicRef, error) {
@@ -85,7 +85,7 @@ func (c *Client) FetchSearch(query string, pages int) ([]TopicRef, error) {
 			seen[ref.ID] = ref
 		}
 	}
-	return refsFromMap(seen), nil
+	return sortRefsByIDDesc(seen), nil
 }
 
 func (c *Client) FetchTopic(topicID int) (Topic, error) {
@@ -94,12 +94,4 @@ func (c *Client) FetchTopic(topicID int) (Topic, error) {
 		return Topic{}, err
 	}
 	return parseTopicPage(html, topicID)
-}
-
-func refsFromMap(m map[int]TopicRef) []TopicRef {
-	out := make([]TopicRef, 0, len(m))
-	for _, ref := range m {
-		out = append(out, ref)
-	}
-	return out
 }

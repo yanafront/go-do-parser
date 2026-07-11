@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type OnlinerPost struct {
@@ -16,6 +17,7 @@ type OnlinerPost struct {
 	Phone            string
 	Email            string
 	Telegram         string
+	PostedAt         *time.Time
 }
 
 func (db *DB) SaveOnlinerPost(ctx context.Context, p OnlinerPost) error {
@@ -23,8 +25,8 @@ func (db *DB) SaveOnlinerPost(ctx context.Context, p OnlinerPost) error {
 INSERT INTO onliner_posts (
     topic_id, topic_url, title, body,
     poster_user_id, poster_username, poster_profile_url,
-    phone, email, telegram
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    phone, email, telegram, posted_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (topic_id) DO UPDATE SET
     topic_url = EXCLUDED.topic_url,
     title = EXCLUDED.title,
@@ -35,6 +37,7 @@ ON CONFLICT (topic_id) DO UPDATE SET
     phone = COALESCE(NULLIF(EXCLUDED.phone, ''), onliner_posts.phone),
     email = COALESCE(NULLIF(EXCLUDED.email, ''), onliner_posts.email),
     telegram = COALESCE(NULLIF(EXCLUDED.telegram, ''), onliner_posts.telegram),
+    posted_at = COALESCE(EXCLUDED.posted_at, onliner_posts.posted_at),
     parsed_at = NOW()
 `,
 		p.TopicID,
@@ -47,6 +50,7 @@ ON CONFLICT (topic_id) DO UPDATE SET
 		nullStr(p.Phone),
 		nullStr(p.Email),
 		nullStr(p.Telegram),
+		nullTime(p.PostedAt),
 	)
 	if err != nil {
 		return fmt.Errorf("save onliner post: %w", err)

@@ -9,14 +9,15 @@ import (
 )
 
 type RuntimeConfig struct {
-	DataDir       string
-	PollInterval  time.Duration
-	ForumID       int
-	ForumPages    int
-	SearchPages   int
-	SearchQueries []string
-	RequestDelay  time.Duration
-	DatabaseURL   string
+	DataDir         string
+	PollInterval    time.Duration
+	ForumID         int
+	ForumPages      int
+	SearchPages     int
+	SearchQueries   []string
+	RequestDelay    time.Duration
+	MaxTopicAgeDays int
+	DatabaseURL     string
 }
 
 func LoadRuntimeConfig() RuntimeConfig {
@@ -58,6 +59,11 @@ func LoadRuntimeConfig() RuntimeConfig {
 		cfg.SearchQueries = splitComma(v)
 	} else {
 		cfg.SearchQueries = []string{"ищу подработку", "ищу работу"}
+	}
+	if v := strings.TrimSpace(os.Getenv("ONLINER_MAX_TOPIC_AGE_DAYS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.MaxTopicAgeDays = n
+		}
 	}
 	return cfg
 }
