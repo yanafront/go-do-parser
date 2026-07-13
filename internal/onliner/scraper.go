@@ -120,10 +120,35 @@ func (s *Scraper) collectTopicRefs() ([]TopicRef, error) {
 func (s *Scraper) processTopic(ctx context.Context, ref TopicRef) (bool, error) {
 	topic, err := s.client.FetchTopic(ref.ID)
 	if err != nil {
-		return false, err
+		if strings.Contains(err.Error(), "empty body") && (strings.TrimSpace(ref.Description) != "" || strings.TrimSpace(ref.Title) != "") {
+			topic = Topic{
+				ID:               ref.ID,
+				Title:            ref.Title,
+				Body:             strings.TrimSpace(ref.Description),
+				PosterUserID:     ref.PosterUserID,
+				PosterUsername:   ref.PosterUsername,
+				PosterProfileURL: ref.PosterProfileURL,
+				Link:             fmt.Sprintf("%s/viewtopic.php?t=%d", baseURL, ref.ID),
+				PostedAt:         nil,
+			}
+		} else {
+			return false, err
+		}
 	}
 	if ref.Title != "" && topic.Title == "" {
 		topic.Title = ref.Title
+	}
+	if strings.TrimSpace(topic.Body) == "" && strings.TrimSpace(ref.Description) != "" {
+		topic.Body = strings.TrimSpace(ref.Description)
+	}
+	if topic.PosterUserID == "" && ref.PosterUserID != "" {
+		topic.PosterUserID = ref.PosterUserID
+	}
+	if topic.PosterUsername == "" && ref.PosterUsername != "" {
+		topic.PosterUsername = ref.PosterUsername
+	}
+	if topic.PosterProfileURL == "" && ref.PosterProfileURL != "" {
+		topic.PosterProfileURL = ref.PosterProfileURL
 	}
 
 	text := topicSearchText(topic)

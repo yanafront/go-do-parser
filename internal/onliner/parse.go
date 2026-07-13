@@ -11,8 +11,13 @@ import (
 )
 
 type TopicRef struct {
-	ID    int
-	Title string
+	ID               int
+	Title            string
+	Description      string
+	PosterUserID     string
+	PosterUsername   string
+	PosterProfileURL string
+	UpText           string
 }
 
 type Topic struct {
@@ -30,6 +35,7 @@ var (
 	topicLinkRE = regexp.MustCompile(`viewtopic\.php\?t=(\d+)`)
 	titleRE     = regexp.MustCompile(`(?is)<h2[^>]*class="wraptxt"[^>]*>\s*<a[^>]*href="[^"]*viewtopic\.php\?t=(\d+)"[^>]*>(.*?)</a>`)
 	descRE      = regexp.MustCompile(`(?is)<p[^>]*class="ba-description"[^>]*>(.*?)</p>`)
+	forumItemRE = regexp.MustCompile(`(?is)<h2[^>]*class="wraptxt"[^>]*>\s*<a[^>]*href="[^"]*viewtopic\.php\?t=(\d+)"[^>]*>(.*?)</a>\s*</h2>.*?(?:<p[^>]*class="ba-description"[^>]*>(.*?)</p>)?.*?<a[^>]*class="gray"[^>]*href="(https?://profile\.onliner\.by/user/(\d+))"[^>]*>(.*?)</a>.*?(?:<p[^>]*class="ba-post-up"[^>]*>.*?</small>\s*([^<]+)</p>)?`)
 	firstAuthorRE = regexp.MustCompile(`(?is)<div[^>]*class="b-mtauthor"[^>]*data-user_id="(\d+)"`)
 	posterNickRE  = regexp.MustCompile(`(?is)<div[^>]*class="b-mtauthor"[^>]*data-user_id="(\d+)".*?<a[^>]*class="[^"]*_name[^"]*"[^>]*(?:title="([^"]*)")?[^>]*>([^<]*)</a>`)
 	firstContentRE = regexp.MustCompile(`(?is)<li[^>]*class="[^"]*msgfirst[^"]*"[^>]*>.*?<div[^>]*class="content"[^>]*id="message_\d+"[^>]*>(.*?)</div>`)
@@ -45,12 +51,45 @@ var (
 func parseTopicRefs(pageHTML string) []TopicRef {
 	seen := make(map[int]TopicRef)
 
+	for _, m := range forumItemRE.FindAllStringSubmatch(pageHTML, -1) {
+		id, err := strconv.Atoi(m[1])
+		if err != nil || id <= 0 {
+			continue
+		}
+		ref := seen[id]
+		ref.ID = id
+		if ref.Title == "" {
+			ref.Title = stripHTML(m[2])
+		}
+		if ref.Description == "" && strings.TrimSpace(m[3]) != "" {
+			ref.Description = stripHTML(m[3])
+		}
+		if ref.PosterProfileURL == "" && strings.TrimSpace(m[4]) != "" {
+			ref.PosterProfileURL = strings.TrimSpace(m[4])
+		}
+		if ref.PosterUserID == "" && strings.TrimSpace(m[5]) != "" {
+			ref.PosterUserID = strings.TrimSpace(m[5])
+		}
+		if ref.PosterUsername == "" && strings.TrimSpace(m[6]) != "" {
+			ref.PosterUsername = stripHTML(m[6])
+		}
+		if ref.UpText == "" && strings.TrimSpace(m[7]) != "" {
+			ref.UpText = strings.TrimSpace(stripHTML(m[7]))
+		}
+		seen[id] = ref
+	}
+
 	for _, m := range titleRE.FindAllStringSubmatch(pageHTML, -1) {
 		id, err := strconv.Atoi(m[1])
 		if err != nil || id <= 0 {
 			continue
 		}
-		seen[id] = TopicRef{ID: id, Title: stripHTML(m[2])}
+		ref := seen[id]
+		ref.ID = id
+		if ref.Title == "" {
+			ref.Title = stripHTML(m[2])
+		}
+		seen[id] = ref
 	}
 
 	if len(seen) == 0 {

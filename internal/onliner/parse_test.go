@@ -24,6 +24,9 @@ func TestParseTopicRefs(t *testing.T) {
 	if byID[26205615].Title != "Ищу подработку" {
 		t.Fatalf("unexpected ref 26205615: %+v", byID[26205615])
 	}
+	if byID[26205615].Description != "48 лет ищу работу или подработку" {
+		t.Fatalf("unexpected desc 26205615: %+v", byID[26205615])
+	}
 }
 
 func TestParseTopicPage(t *testing.T) {
