@@ -361,6 +361,37 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 			adUser, adPhone := outreach.SeekerAdContacts(body, post.PosterUsername, post.PosterPhone, a.contactSkip)
 			a.saveJobSeekerPost(ctx, channelKeyNorm, source, post, body, adUser, adPhone)
 			if a.outreach != nil {
+				if a.db != nil {
+					text := strings.TrimSpace(body)
+					if text == "" {
+						text = strings.TrimSpace(post.Text)
+					}
+					if text == "" {
+						text = strings.TrimSpace(post.Caption)
+					}
+					if t, ok := outreach.SeekerTarget(text, post.PosterUsername, post.PosterPhone, adUser, adPhone, a.contactSkip); ok {
+						if contacted, firstSentAt, err := a.db.WasDMContacted(ctx, t.Type, t.Raw); err != nil {
+							a.log.Warn("check dm contacted failed",
+								zap.String("type", t.Type),
+								zap.String("contact", t.Raw),
+								zap.Error(err),
+							)
+						} else if contacted {
+							sentAt := time.Now().UTC()
+							if firstSentAt != nil {
+								sentAt = firstSentAt.UTC()
+							}
+							if err := a.db.UpdateJobSeekerDM(ctx, channelKeyNorm, post.MessageID, t.Raw, t.Type, sentAt); err != nil {
+								a.log.Warn("update job seeker dm failed",
+									zap.String("source", channelKeyNorm),
+									zap.Int("message_id", post.MessageID),
+									zap.Error(err),
+								)
+							}
+							goto seekerDone
+						}
+					}
+				}
 				if target := a.outreach.HandleSeekerPost(ctx, outreach.PostInfo{
 					SourceChannel:  source,
 					MessageID:      post.MessageID,
@@ -374,6 +405,7 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 				}); target != nil {
 					a.updateJobSeekerDM(ctx, channelKeyNorm, post.MessageID, *target)
 				}
+			seekerDone:
 			} else if a.cfg.Seeker.Active() {
 				a.log.Warn("seeker post skipped: messenger not running",
 					zap.String("source", source),
@@ -430,6 +462,38 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 		a.saveVacancy(ctx, channelKeyNorm, post.MessageID, destID, body)
 
 		if a.outreach != nil {
+			if a.db != nil {
+				text := strings.TrimSpace(body)
+				if text == "" {
+					text = strings.TrimSpace(post.Text)
+				}
+				if text == "" {
+					text = strings.TrimSpace(post.Caption)
+				}
+				for _, t := range outreach.ExtractTargets(text) {
+					if contacted, firstSentAt, err := a.db.WasDMContacted(ctx, t.Type, t.Raw); err != nil {
+						a.log.Warn("check dm contacted failed",
+							zap.String("type", t.Type),
+							zap.String("contact", t.Raw),
+							zap.Error(err),
+						)
+						break
+					} else if contacted {
+						sentAt := time.Now().UTC()
+						if firstSentAt != nil {
+							sentAt = firstSentAt.UTC()
+						}
+						if err := a.db.UpdateVacancyDM(ctx, channelKeyNorm, post.MessageID, t.Raw, t.Type, sentAt); err != nil {
+							a.log.Warn("update vacancy dm failed",
+								zap.String("source", channelKeyNorm),
+								zap.Int("message_id", post.MessageID),
+								zap.Error(err),
+							)
+						}
+						goto vacancyDone
+					}
+				}
+			}
 			if target := a.outreach.HandlePost(ctx, outreach.PostInfo{
 				SourceChannel: source,
 				MessageID:     post.MessageID,
@@ -438,6 +502,7 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 			}); target != nil {
 				a.updateVacancyDM(ctx, channelKeyNorm, post.MessageID, *target)
 			}
+		vacancyDone:
 		}
 
 		time.Sleep(1500 * time.Millisecond)
@@ -639,6 +704,28 @@ func (a *App) retryPendingSeekerDMs(ctx context.Context) {
 		return
 	}
 	for _, p := range pending {
+		if t, ok := outreach.SeekerTarget(strings.TrimSpace(p.Body), p.PosterUsername, p.PosterPhone, p.AdUsername, p.AdPhone, a.contactSkip); ok {
+			if contacted, firstSentAt, err := a.db.WasDMContacted(ctx, t.Type, t.Raw); err != nil {
+				a.log.Warn("check dm contacted failed",
+					zap.String("type", t.Type),
+					zap.String("contact", t.Raw),
+					zap.Error(err),
+				)
+			} else if contacted {
+				sentAt := time.Now().UTC()
+				if firstSentAt != nil {
+					sentAt = firstSentAt.UTC()
+				}
+				if err := a.db.UpdateJobSeekerDM(ctx, p.SourceChannel, p.SourceMessageID, t.Raw, t.Type, sentAt); err != nil {
+					a.log.Warn("update job seeker dm failed",
+						zap.String("source", p.SourceChannel),
+						zap.Int("message_id", p.SourceMessageID),
+						zap.Error(err),
+					)
+				}
+				continue
+			}
+		}
 		if target := a.outreach.HandleSeekerPost(ctx, outreach.PostInfo{
 			SourceChannel:  p.SourceChannel,
 			MessageID:      p.SourceMessageID,
