@@ -29,6 +29,56 @@ func TestParseTopicRefs(t *testing.T) {
 	}
 }
 
+func TestParseTopicRefsWithUpText(t *testing.T) {
+	html := `
+<h2 class="wraptxt"><a href="./viewtopic.php?t=26198835">Ищу подработку</a></h2>
+<p class="ba-description">Ищу подработку в первой половине дня</p>
+<p class="ba-signature"><a class="gray" href="https://profile.onliner.by/user/2193431">Людмила2017</a></p>
+<p class="ba-post-up"><small class="tot-up">UP!</small> 42 минуты назад</p>
+<h2 class="wraptxt"><a href="/viewtopic.php?t=26181106">Грузчик</a></h2>
+`
+	refs := parseTopicRefs(html)
+	byID := make(map[int]TopicRef)
+	for _, ref := range refs {
+		byID[ref.ID] = ref
+	}
+	if byID[26198835].UpText != "42 минуты назад" {
+		t.Fatalf("unexpected uptext: %+v", byID[26198835])
+	}
+}
+
+func TestIsRecentBump(t *testing.T) {
+	if !isRecentBump("42 минуты назад") {
+		t.Fatal("expected recent bump")
+	}
+	if isRecentBump("9 дней назад") {
+		t.Fatal("expected old bump")
+	}
+}
+
+func TestStoreShouldSkip(t *testing.T) {
+	dir := t.TempDir()
+	store, err := OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.ShouldSkip(100, "16 минут назад") {
+		t.Fatal("new topic should not skip")
+	}
+	if err := store.MarkSeen(100, "16 минут назад"); err != nil {
+		t.Fatal(err)
+	}
+	if !store.ShouldSkip(100, "16 минут назад") {
+		t.Fatal("same uptext should skip")
+	}
+	if store.ShouldSkip(100, "20 минут назад") {
+		t.Fatal("changed uptext should not skip")
+	}
+	if store.ShouldSkip(100, "9 дней назад") {
+		t.Fatal("recent bump should not skip")
+	}
+}
+
 func TestParseTopicPage(t *testing.T) {
 	html := `
 <li id="p116435003" class="msgpost msgfirst">

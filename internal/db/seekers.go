@@ -61,17 +61,11 @@ func (db *DB) ListPendingSeekerDMs(ctx context.Context, limit int) ([]JobSeekerP
 		limit = 1
 	}
 	rows, err := db.sql.QueryContext(ctx, `
-SELECT source_channel, source_message_id, body,
+SELECT source_channel, source_message_id, COALESCE(source_message_link, ''), body,
        COALESCE(poster_username, ''), COALESCE(poster_phone, ''),
        COALESCE(ad_username, ''), COALESCE(ad_phone, '')
 FROM job_seeker_posts
 WHERE (dm_contact IS NULL OR dm_contact = '')
-  AND (
-    COALESCE(ad_username, '') <> '' OR
-    COALESCE(ad_phone, '') <> '' OR
-    COALESCE(poster_username, '') <> '' OR
-    COALESCE(poster_phone, '') <> ''
-  )
 ORDER BY created_at ASC
 LIMIT $1
 `, limit)
@@ -86,6 +80,7 @@ LIMIT $1
 		if err := rows.Scan(
 			&p.SourceChannel,
 			&p.SourceMessageID,
+			&p.SourceMessageLink,
 			&p.Body,
 			&p.PosterUsername,
 			&p.PosterPhone,
@@ -100,6 +95,18 @@ LIMIT $1
 		return nil, fmt.Errorf("list pending seeker dms: %w", err)
 	}
 	return out, nil
+}
+
+func (db *DB) CountPendingSeekerDMs(ctx context.Context) (int, error) {
+	var n int
+	err := db.sql.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM job_seeker_posts
+WHERE (dm_contact IS NULL OR dm_contact = '')
+`).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count pending seeker dms: %w", err)
+	}
+	return n, nil
 }
 
 func (db *DB) UpdateJobSeekerDM(ctx context.Context, sourceChannel string, messageID int, contact, contactType string, sentAt time.Time) error {

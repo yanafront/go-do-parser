@@ -49,6 +49,7 @@ type sendJob struct {
 
 type PostInfo struct {
 	SourceChannel  string
+	SourceLink     string
 	MessageID      int
 	Body           string
 	Text           string
@@ -206,22 +207,32 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 	if !s.seekerCfg.Active() || s.seekerStore == nil {
 		return nil
 	}
-	if strings.TrimSpace(s.seekerCfg.Message) == "" {
-		s.log.Warn("seeker dm skipped: SEEKER_MESSAGE is empty")
+	message := s.buildSeekerMessage(post)
+	if strings.TrimSpace(message) == "" {
+		s.log.Warn("seeker dm skipped: no seeker templates")
 		return nil
 	}
 	if !telegram.IsJobSeeker(telegram.Post{Text: post.Text, Caption: post.Caption}) {
-		return nil
+		if !telegram.IsJobSeeker(telegram.Post{Text: post.Body}) {
+			return nil
+		}
 	}
 	if !s.seekerStore.CanSendToday(s.seekerCfg.DailyLimit) {
 		s.log.Info("seeker daily limit reached", zap.Int("limit", s.seekerCfg.DailyLimit))
 		return nil
 	}
-	if s.seekerRateStore == nil || !s.seekerRateStore.CanSendNow(s.seekerCfg.Delay) {
+	minDelay := s.seekerCfg.MinDelay()
+	if s.seekerRateStore == nil || !s.seekerRateStore.CanSendNow(minDelay) {
 		if s.seekerRateStore != nil && s.seekerRateStore.IsPaused() {
 			s.log.Info("seeker paused by Telegram limit")
+		} else if s.seekerRateStore != nil {
+			if delay, ok := s.seekerRateStore.NextSendDelay(); ok {
+				s.log.Info("seeker cooldown", zap.Duration("next_in", delay))
+			} else {
+				s.log.Info("seeker cooldown", zap.Duration("delay_min", minDelay))
+			}
 		} else {
-			s.log.Info("seeker cooldown", zap.Duration("delay", s.seekerCfg.Delay))
+			s.log.Info("seeker cooldown", zap.Duration("delay_min", minDelay))
 		}
 		return nil
 	}
@@ -247,7 +258,7 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 		return nil
 	}
 
-	if err := s.send(ctx, target, s.seekerCfg.Message); err != nil {
+	if err := s.send(ctx, target, message); err != nil {
 		s.onSeekerSendFailed(target, post, err)
 		return nil
 	}
@@ -262,17 +273,45 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 	if err := s.seekerStore.MarkSent(target.Key, rec); err != nil {
 		s.log.Warn("seeker store failed", zap.Error(err))
 	}
-	if err := s.seekerRateStore.TouchLastSent(); err != nil {
-		s.log.Warn("seeker rate store failed", zap.Error(err))
-	}
-
+	nextDelay := s.scheduleSeekerNext()
 	s.log.Info("seeker sent",
 		zap.String("target", target.Raw),
 		zap.String("source", post.SourceChannel),
+		zap.String("source_link", FormatSourceLink(post.SourceChannel, post.SourceLink, post.MessageID)),
 		zap.Int("message_id", post.MessageID),
 		zap.Int("daily_sent", s.seekerStore.DailySent()),
+		zap.Duration("next_delay", nextDelay),
 	)
 	return &target
+}
+
+func (s *Service) buildSeekerMessage(post PostInfo) string {
+	sourceLink := FormatSourceLink(post.SourceChannel, post.SourceLink, post.MessageID)
+	sourceName := FormatSourceName(post.SourceChannel)
+	if custom := strings.TrimSpace(s.seekerCfg.Message); custom != "" {
+		if strings.Contains(custom, sourcePlaceholder) || strings.Contains(custom, sourceNamePlaceholder) {
+			return FillSourcePlaceholders(custom, sourceLink, sourceName)
+		}
+		return custom + "\n\nИсточник: " + sourceLink
+	}
+	return PickSeekerMessage(sourceLink, sourceName)
+}
+
+func (s *Service) scheduleSeekerNext() time.Duration {
+	minDelay := s.seekerCfg.MinDelay()
+	maxDelay := s.seekerCfg.MaxDelay()
+	if s.seekerRateStore == nil {
+		return minDelay
+	}
+	if err := s.seekerRateStore.ScheduleNext(minDelay, maxDelay); err != nil {
+		s.log.Warn("seeker schedule next failed", zap.Error(err))
+		_ = s.seekerRateStore.TouchLastSent()
+		return minDelay
+	}
+	if d, ok := s.seekerRateStore.NextSendDelay(); ok {
+		return d
+	}
+	return minDelay
 }
 
 func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) {
@@ -320,7 +359,7 @@ func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) {
 	}
 
 	if s.seekerRateStore != nil {
-		_ = s.seekerRateStore.TouchLastSent()
+		_ = s.seekerRateStore.ScheduleNext(s.seekerCfg.MinDelay(), s.seekerCfg.MaxDelay())
 	}
 }
 

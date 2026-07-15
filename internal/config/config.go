@@ -61,6 +61,8 @@ type SeekerConfig struct {
 	Message           string
 	DailyLimit        int
 	Delay             time.Duration
+	DelayMin          time.Duration
+	DelayMax          time.Duration
 	DataDir           string
 	ExplicitlyEnabled bool
 }
@@ -70,7 +72,29 @@ func (c SeekerConfig) Active() bool {
 }
 
 func (c SeekerConfig) Enabled() bool {
-	return c.Active() && strings.TrimSpace(c.Message) != ""
+	return c.Active()
+}
+
+func (c SeekerConfig) MinDelay() time.Duration {
+	if c.DelayMin > 0 {
+		return c.DelayMin
+	}
+	if c.Delay > 0 {
+		return c.Delay
+	}
+	return 8 * time.Minute
+}
+
+func (c SeekerConfig) MaxDelay() time.Duration {
+	if c.DelayMax > 0 {
+		return c.DelayMax
+	}
+	min := c.MinDelay()
+	max := 25 * time.Minute
+	if max < min {
+		return min
+	}
+	return max
 }
 
 func (c *Config) MessengerEnabled() bool {
@@ -232,6 +256,16 @@ func (c *Config) applyEnv() {
 			c.Seeker.Delay = d
 		}
 	}
+	if v := os.Getenv("SEEKER_DELAY_MIN"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			c.Seeker.DelayMin = d
+		}
+	}
+	if v := os.Getenv("SEEKER_DELAY_MAX"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			c.Seeker.DelayMax = d
+		}
+	}
 	if v := strings.TrimSpace(os.Getenv("SEEKER_ENABLED")); v == "true" || v == "1" || strings.EqualFold(v, "yes") {
 		c.Seeker.ExplicitlyEnabled = true
 	}
@@ -271,10 +305,19 @@ func (c *Config) setDefaults() {
 		c.Seeker.DataDir = filepath.Join(c.App.DataDir, strings.TrimPrefix(c.Seeker.DataDir, "./"))
 	}
 	if c.Seeker.DailyLimit == 0 {
-		c.Seeker.DailyLimit = 5
+		c.Seeker.DailyLimit = 40
 	}
 	if c.Seeker.Delay == 0 {
-		c.Seeker.Delay = 10 * time.Minute
+		c.Seeker.Delay = 8 * time.Minute
+	}
+	if c.Seeker.DelayMin == 0 {
+		c.Seeker.DelayMin = c.Seeker.Delay
+	}
+	if c.Seeker.DelayMax == 0 {
+		c.Seeker.DelayMax = 25 * time.Minute
+	}
+	if c.Seeker.DelayMax < c.Seeker.DelayMin {
+		c.Seeker.DelayMax = c.Seeker.DelayMin
 	}
 	if c.Seeker.Active() && strings.TrimSpace(c.Outreach.Phone) == "" {
 		c.Outreach.Phone = c.Telegram.Phone

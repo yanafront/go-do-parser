@@ -5,13 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
+
+type seenEntry struct {
+	UpText string `json:"up_text,omitempty"`
+}
 
 type Store struct {
 	path string
 	mu   sync.Mutex
-	seen map[string]bool
+	seen map[string]seenEntry
 }
 
 func OpenStore(dataDir string) (*Store, error) {
@@ -20,7 +25,7 @@ func OpenStore(dataDir string) (*Store, error) {
 	}
 	s := &Store{
 		path: filepath.Join(dataDir, "onliner.json"),
-		seen: make(map[string]bool),
+		seen: make(map[string]seenEntry),
 	}
 	if err := s.load(); err != nil {
 		return nil, err
@@ -28,15 +33,26 @@ func OpenStore(dataDir string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) IsSeen(topicID int) bool {
+func (s *Store) ShouldSkip(topicID int, upText string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.seen[topicKey(topicID)]
+	entry, ok := s.seen[topicKey(topicID)]
+	if !ok {
+		return false
+	}
+	upText = strings.TrimSpace(upText)
+	if upText != "" && upText != strings.TrimSpace(entry.UpText) {
+		return false
+	}
+	if isRecentBump(upText) {
+		return false
+	}
+	return true
 }
 
-func (s *Store) MarkSeen(topicID int) error {
+func (s *Store) MarkSeen(topicID int, upText string) error {
 	s.mu.Lock()
-	s.seen[topicKey(topicID)] = true
+	s.seen[topicKey(topicID)] = seenEntry{UpText: strings.TrimSpace(upText)}
 	s.mu.Unlock()
 	return s.save()
 }
@@ -52,9 +68,25 @@ func (s *Store) load() error {
 	if len(b) == 0 {
 		return nil
 	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return json.Unmarshal(b, &s.seen)
+	for k, v := range raw {
+		var entry seenEntry
+		if err := json.Unmarshal(v, &entry); err != nil {
+			var seen bool
+			if json.Unmarshal(v, &seen) == nil && seen {
+				s.seen[k] = seenEntry{}
+				continue
+			}
+			return fmt.Errorf("parse onliner state key %s: %w", k, err)
+		}
+		s.seen[k] = entry
+	}
+	return nil
 }
 
 func (s *Store) save() error {

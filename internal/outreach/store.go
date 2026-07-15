@@ -3,6 +3,7 @@ package outreach
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -24,10 +25,11 @@ type Store struct {
 }
 
 type diskState struct {
-	Contacted  map[string]Record `json:"contacted"`
-	Daily      map[string]int    `json:"daily"`
-	LastSentAt string            `json:"last_sent_at"`
-	PausedUntil string           `json:"paused_until,omitempty"`
+	Contacted   map[string]Record `json:"contacted"`
+	Daily       map[string]int    `json:"daily"`
+	LastSentAt  string            `json:"last_sent_at"`
+	NextSendAt  string            `json:"next_send_at,omitempty"`
+	PausedUntil string            `json:"paused_until,omitempty"`
 }
 
 func OpenStore(dataDir string) (*Store, error) {
@@ -126,9 +128,15 @@ func (s *Store) CanSendNow(minDelay time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensure()
+	now := time.Now()
 	if s.data.PausedUntil != "" {
-		if t, err := time.Parse(time.RFC3339, s.data.PausedUntil); err == nil && time.Now().Before(t) {
+		if t, err := time.Parse(time.RFC3339, s.data.PausedUntil); err == nil && now.Before(t) {
 			return false
+		}
+	}
+	if s.data.NextSendAt != "" {
+		if t, err := time.Parse(time.RFC3339, s.data.NextSendAt); err == nil {
+			return !now.Before(t)
 		}
 	}
 	if s.data.LastSentAt == "" {
@@ -138,7 +146,25 @@ func (s *Store) CanSendNow(minDelay time.Duration) bool {
 	if err != nil {
 		return true
 	}
-	return time.Since(t) >= minDelay
+	return now.Sub(t) >= minDelay
+}
+
+func (s *Store) NextSendDelay() (time.Duration, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensure()
+	if s.data.NextSendAt == "" {
+		return 0, false
+	}
+	t, err := time.Parse(time.RFC3339, s.data.NextSendAt)
+	if err != nil {
+		return 0, false
+	}
+	d := time.Until(t)
+	if d < 0 {
+		return 0, false
+	}
+	return d, true
 }
 
 func (s *Store) IsPaused() bool {
@@ -155,6 +181,23 @@ func (s *Store) IsPaused() bool {
 	return time.Now().Before(t)
 }
 
+func (s *Store) PausedUntil() (time.Time, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensure()
+	if s.data.PausedUntil == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s.data.PausedUntil)
+	if err != nil {
+		return time.Time{}, false
+	}
+	if !time.Now().Before(t) {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
 func (s *Store) PauseUntil(until time.Time) error {
 	s.mu.Lock()
 	s.ensure()
@@ -169,7 +212,29 @@ func (s *Store) MarkSent(key string, rec Record) error {
 	s.data.Contacted[key] = rec
 	day := todayKey()
 	s.data.Daily[day]++
-	s.data.LastSentAt = time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC()
+	s.data.LastSentAt = now.Format(time.RFC3339)
+	s.mu.Unlock()
+	return s.save()
+}
+
+func (s *Store) ScheduleNext(minDelay, maxDelay time.Duration) error {
+	if minDelay < 0 {
+		minDelay = 0
+	}
+	if maxDelay < minDelay {
+		maxDelay = minDelay
+	}
+	delay := minDelay
+	if maxDelay > minDelay {
+		n := int64(maxDelay - minDelay)
+		delay = minDelay + time.Duration(rand.Int63n(n+1))
+	}
+	now := time.Now().UTC()
+	s.mu.Lock()
+	s.ensure()
+	s.data.LastSentAt = now.Format(time.RFC3339)
+	s.data.NextSendAt = now.Add(delay).Format(time.RFC3339)
 	s.mu.Unlock()
 	return s.save()
 }

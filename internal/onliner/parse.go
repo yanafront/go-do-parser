@@ -35,7 +35,8 @@ var (
 	topicLinkRE = regexp.MustCompile(`viewtopic\.php\?t=(\d+)`)
 	titleRE     = regexp.MustCompile(`(?is)<h2[^>]*class="wraptxt"[^>]*>\s*<a[^>]*href="[^"]*viewtopic\.php\?t=(\d+)"[^>]*>(.*?)</a>`)
 	descRE      = regexp.MustCompile(`(?is)<p[^>]*class="ba-description"[^>]*>(.*?)</p>`)
-	forumItemRE = regexp.MustCompile(`(?is)<h2[^>]*class="wraptxt"[^>]*>\s*<a[^>]*href="[^"]*viewtopic\.php\?t=(\d+)"[^>]*>(.*?)</a>\s*</h2>.*?(?:<p[^>]*class="ba-description"[^>]*>(.*?)</p>)?.*?<a[^>]*class="gray"[^>]*href="(https?://profile\.onliner\.by/user/(\d+))"[^>]*>(.*?)</a>.*?(?:<p[^>]*class="ba-post-up"[^>]*>.*?</small>\s*([^<]+)</p>)?`)
+	forumItemRE = regexp.MustCompile(`(?is)<h2[^>]*class="wraptxt"[^>]*>\s*<a[^>]*href="[^"]*viewtopic\.php\?t=(\d+)"[^>]*>(.*?)</a>\s*</h2>.*?(?:<p[^>]*class="ba-description"[^>]*>(.*?)</p>)?.*?<a[^>]*class="gray"[^>]*href="(https?://profile\.onliner\.by/user/(\d+))"[^>]*>(.*?)</a>`)
+	upTextRE      = regexp.MustCompile(`(?is)<p[^>]*class="ba-post-up"[^>]*>.*?</small>\s*([^<]+)</p>`)
 	firstAuthorRE = regexp.MustCompile(`(?is)<div[^>]*class="b-mtauthor"[^>]*data-user_id="(\d+)"`)
 	posterNickRE  = regexp.MustCompile(`(?is)<div[^>]*class="b-mtauthor"[^>]*data-user_id="(\d+)".*?<a[^>]*class="[^"]*_name[^"]*"[^>]*(?:title="([^"]*)")?[^>]*>([^<]*)</a>`)
 	firstContentRE = regexp.MustCompile(`(?is)<li[^>]*class="[^"]*msgfirst[^"]*"[^>]*>.*?<div[^>]*class="content"[^>]*id="message_\d+"[^>]*>(.*?)</div>`)
@@ -73,10 +74,14 @@ func parseTopicRefs(pageHTML string) []TopicRef {
 		if ref.PosterUsername == "" && strings.TrimSpace(m[6]) != "" {
 			ref.PosterUsername = stripHTML(m[6])
 		}
-		if ref.UpText == "" && strings.TrimSpace(m[7]) != "" {
-			ref.UpText = strings.TrimSpace(stripHTML(m[7]))
-		}
 		seen[id] = ref
+	}
+
+	for id, ref := range seen {
+		if ref.UpText == "" {
+			ref.UpText = extractUpText(pageHTML, id)
+			seen[id] = ref
+		}
 	}
 
 	for _, m := range titleRE.FindAllStringSubmatch(pageHTML, -1) {
@@ -187,6 +192,40 @@ func stripHTML(s string) string {
 
 func topicSearchText(topic Topic) string {
 	return strings.TrimSpace(topic.Title + "\n" + topic.Body)
+}
+
+func extractUpText(pageHTML string, topicID int) string {
+	marker := fmt.Sprintf("viewtopic.php?t=%d", topicID)
+	idx := strings.Index(pageHTML, marker)
+	if idx < 0 {
+		return ""
+	}
+	end := idx + 4000
+	if end > len(pageHTML) {
+		end = len(pageHTML)
+	}
+	chunk := pageHTML[idx:end]
+	next := strings.Index(chunk[len(marker):], "viewtopic.php?t=")
+	if next > 0 {
+		chunk = chunk[:len(marker)+next]
+	}
+	if m := upTextRE.FindStringSubmatch(chunk); len(m) > 1 {
+		return strings.TrimSpace(stripHTML(m[1]))
+	}
+	return ""
+}
+
+func isRecentBump(upText string) bool {
+	upText = strings.ToLower(strings.TrimSpace(upText))
+	if upText == "" {
+		return false
+	}
+	for _, part := range []string{"минут", "часов", "час назад", "сегодня", "вчера"} {
+		if strings.Contains(upText, part) {
+			return true
+		}
+	}
+	return false
 }
 
 var ruMonths = map[string]time.Month{

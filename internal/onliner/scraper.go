@@ -33,10 +33,10 @@ func NewScraper(cfg Config, store *Store, database *db.DB, log *zap.Logger) *Scr
 		cfg.ForumID = 34
 	}
 	if cfg.ForumPages <= 0 {
-		cfg.ForumPages = 2
+		cfg.ForumPages = 5
 	}
 	if cfg.SearchPages <= 0 {
-		cfg.SearchPages = 1
+		cfg.SearchPages = 3
 	}
 	if len(cfg.SearchQueries) == 0 {
 		cfg.SearchQueries = []string{"ищу подработку", "ищу работу"}
@@ -54,6 +54,10 @@ func NewScraper(cfg Config, store *Store, database *db.DB, log *zap.Logger) *Scr
 }
 
 func (s *Scraper) SyncOnce(ctx context.Context) error {
+	if err := s.syncPendingSeekerDMs(ctx); err != nil {
+		s.log.Warn("onliner dm backlog sync failed", zap.Error(err))
+	}
+
 	refs, err := s.collectTopicRefs()
 	if err != nil {
 		return err
@@ -65,7 +69,7 @@ func (s *Scraper) SyncOnce(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if s.store.IsSeen(ref.ID) {
+		if s.store.ShouldSkip(ref.ID, ref.UpText) {
 			continue
 		}
 		if savedTopic, err := s.processTopic(ctx, ref); err != nil {
@@ -106,8 +110,25 @@ func (s *Scraper) collectTopicRefs() ([]TopicRef, error) {
 		return nil, fmt.Errorf("fetch forum: %w", err)
 	}
 	for _, ref := range forumRefs {
-		if existing, ok := seen[ref.ID]; ok && ref.Title != "" && existing.Title == "" {
-			existing.Title = ref.Title
+		if existing, ok := seen[ref.ID]; ok {
+			if ref.Title != "" && existing.Title == "" {
+				existing.Title = ref.Title
+			}
+			if ref.Description != "" && existing.Description == "" {
+				existing.Description = ref.Description
+			}
+			if ref.UpText != "" && existing.UpText == "" {
+				existing.UpText = ref.UpText
+			}
+			if ref.PosterUserID != "" && existing.PosterUserID == "" {
+				existing.PosterUserID = ref.PosterUserID
+			}
+			if ref.PosterUsername != "" && existing.PosterUsername == "" {
+				existing.PosterUsername = ref.PosterUsername
+			}
+			if ref.PosterProfileURL != "" && existing.PosterProfileURL == "" {
+				existing.PosterProfileURL = ref.PosterProfileURL
+			}
 			seen[ref.ID] = existing
 			continue
 		}
@@ -153,7 +174,7 @@ func (s *Scraper) processTopic(ctx context.Context, ref TopicRef) (bool, error) 
 
 	text := topicSearchText(topic)
 	if !filter.IsJobSeekerText(text) {
-		if err := s.store.MarkSeen(ref.ID); err != nil {
+		if err := s.store.MarkSeen(ref.ID, ref.UpText); err != nil {
 			return false, err
 		}
 		return false, nil
@@ -162,7 +183,7 @@ func (s *Scraper) processTopic(ctx context.Context, ref TopicRef) (bool, error) 
 	if s.cfg.MaxTopicAgeDays > 0 && topic.PostedAt != nil {
 		cutoff := time.Now().AddDate(0, 0, -s.cfg.MaxTopicAgeDays)
 		if topic.PostedAt.Before(cutoff) {
-			if err := s.store.MarkSeen(ref.ID); err != nil {
+			if err := s.store.MarkSeen(ref.ID, ref.UpText); err != nil {
 				return false, err
 			}
 			return false, nil
@@ -187,7 +208,11 @@ func (s *Scraper) processTopic(ctx context.Context, ref TopicRef) (bool, error) 
 		return false, err
 	}
 
-	if err := s.store.MarkSeen(topic.ID); err != nil {
+	if err := s.enqueueSeekerDM(ctx, topic, contacts); err != nil {
+		return false, err
+	}
+
+	if err := s.store.MarkSeen(topic.ID, ref.UpText); err != nil {
 		return false, err
 	}
 
@@ -196,4 +221,43 @@ func (s *Scraper) processTopic(ctx context.Context, ref TopicRef) (bool, error) 
 		zap.String("link", topic.Link),
 	)
 	return true, nil
+}
+
+func (s *Scraper) enqueueSeekerDM(ctx context.Context, topic Topic, contacts Contacts) error {
+	if strings.TrimSpace(contacts.Phone) == "" && strings.TrimSpace(contacts.Telegram) == "" {
+		return nil
+	}
+	return s.db.SaveJobSeekerPost(ctx, db.JobSeekerPost{
+		SourceChannel:     fmt.Sprintf("onliner:%d", s.cfg.ForumID),
+		SourceMessageID:     topic.ID,
+		SourceMessageLink:   topic.Link,
+		Body:                topicSearchText(topic),
+		PosterUsername:      topic.PosterUsername,
+		AdUsername:          contacts.Telegram,
+		AdPhone:             contacts.Phone,
+	})
+}
+
+func (s *Scraper) syncPendingSeekerDMs(ctx context.Context) error {
+	posts, err := s.db.ListOnlinerPostsPendingDM(ctx, s.cfg.ForumID, 100)
+	if err != nil {
+		return err
+	}
+	for _, p := range posts {
+		if err := s.db.SaveJobSeekerPost(ctx, db.JobSeekerPost{
+			SourceChannel:     fmt.Sprintf("onliner:%d", s.cfg.ForumID),
+			SourceMessageID:     p.TopicID,
+			SourceMessageLink:   p.TopicURL,
+			Body:                strings.TrimSpace(p.Title + "\n" + p.Body),
+			PosterUsername:      p.PosterUsername,
+			AdUsername:          p.Telegram,
+			AdPhone:             p.Phone,
+		}); err != nil {
+			return err
+		}
+	}
+	if len(posts) > 0 {
+		s.log.Info("onliner dm backlog synced", zap.Int("count", len(posts)))
+	}
+	return nil
 }

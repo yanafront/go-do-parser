@@ -25,8 +25,8 @@ func LoadRuntimeConfig() RuntimeConfig {
 		DataDir:      envOr("ONLINER_DATA_DIR", "./data/onliner"),
 		PollInterval: 10 * time.Minute,
 		ForumID:      34,
-		ForumPages:   2,
-		SearchPages:  1,
+		ForumPages:   5,
+		SearchPages:  3,
 		RequestDelay: 400 * time.Millisecond,
 		DatabaseURL:  resolveDatabaseURL(),
 	}
