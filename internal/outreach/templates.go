@@ -10,31 +10,76 @@ const sourcePlaceholder = "{{source}}"
 const sourceNamePlaceholder = "{{source_name}}"
 
 var seekerTemplates = []string{
+	`Добрый день! Увидели ваше объявление в {{source_name}}. Если ищете работу — заходите к нам: <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Podrabotki.by</a>`,
+
+	`Здравствуйте! Увидели ваше объявление в {{source_name}} ({{source}}). Если сейчас в поиске работы — будем рады видеть вас на <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Podrabotki.by</a>`,
+
 	`Добрый день!
 
-Увидели ваше объявление: {{source}}
-
-Если сейчас ищете подработку или новую работу, возможно, вам будет полезен сервис Podrabotki.by. Мы собрали вакансии в одном месте, чтобы не приходилось искать их по десяткам Telegram-каналов.
-
-Можно быстро посмотреть предложения, выбрать подходящую смену и сразу связаться с работодателем.
-
-👉 <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Podrabotki.by</a>`,
-
-	`Здравствуйте!
-
-Нашли ваш контакт в {{source_name}}: {{source}}
-
-Если вы в поиске работы или подработки — загляните на Podrabotki.by. Там собраны актуальные предложения, можно сразу откликнуться работодателю.
+Увидели ваше объявление в {{source_name}}. Если вы ищете работу или подработку — заходите к нам на Podrabotki.by, там собраны актуальные вакансии.
 
 👉 <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Открыть вакансии</a>`,
 
+	`Здравствуйте!
+
+Нашли ваше объявление в {{source_name}}: {{source}}
+
+Если вы сейчас ищете работу — заходите к нам. На Podrabotki.by можно быстро посмотреть смены и сразу связаться с работодателем, без долгого поиска по каналам.
+
+<a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Podrabotki.by</a>`,
+
 	`Добрый день!
 
-Пишем по поводу вашего объявления ({{source}}).
+Увидели ваше объявление в {{source_name}}. Пишем, потому что вы, похоже, в поиске работы.
 
-На podrabotki.by можно посмотреть свежие смены и вакансии без бесконечного скролла по каналам. Если сейчас ищете работу — сервис может сэкономить время.
+Если это так — заходите к нам на Podrabotki.by. Мы собрали вакансии и подработки в одном месте: можно выбрать смену, посмотреть условия и написать работодателю напрямую.
 
-👉 <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Podrabotki.by</a>`,
+Будет полезно, если не хочется каждый раз листать десятки Telegram-каналов.
+
+👉 <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Посмотреть вакансии</a>`,
+
+	`Здравствуйте!
+
+Увидели ваше объявление в {{source_name}} ({{source}}).
+
+Если вы ищете работу или подработку — заходите к нам на Podrabotki.by. Там собраны свежие предложения по Минску и другим городам: смены, подработки, вакансии на постоянку.
+
+Можно отфильтровать по графику, посмотреть детали и сразу откликнуться. Сервис бесплатный для соискателей.
+
+Попробуйте — возможно, подходящая смена уже есть.
+
+<a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Podrabotki.by</a>`,
+
+	`Добрый день!
+
+Увидели ваше объявление в {{source_name}} и решили написать.
+
+Если вы сейчас в поиске работы — заходите к нам. Мы сделали Podrabotki.by как единое место, где можно найти подработку без бесконечного скролла по разным каналам и форумам.
+
+Что там есть:
+— актуальные вакансии и смены
+— прямой контакт с работодателем
+— удобный поиск по типу работы и графику
+
+Объявление, которое мы увидели: {{source}}
+
+Если тема поиска работы для вас актуальна — будем рады, если заглянете.
+
+👉 <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Перейти на Podrabotki.by</a>`,
+
+	`Здравствуйте!
+
+Пишем по поводу вашего объявления в {{source_name}}.
+
+Мы увидели, что вы ищете работу, и хотели рассказать о сервисе, который может помочь быстрее найти подходящую смену.
+
+Podrabotki.by — это платформа, где собраны вакансии из разных источников в одном месте. Не нужно вручную мониторить каналы, форумы и чаты: можно открыть сайт, посмотреть свежие предложения, сравнить условия и сразу связаться с работодателем.
+
+Если поиск работы для вас сейчас в приоритете — заходите к нам, посмотрите, что есть на сегодня. Возможно, найдёте вариант лучше, чем ожидали.
+
+Ссылка на ваше объявление: {{source}}
+
+<a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Открыть Podrabotki.by</a>`,
 }
 
 func HasSeekerTemplates() bool {
