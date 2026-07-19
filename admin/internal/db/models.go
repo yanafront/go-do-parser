@@ -46,17 +46,20 @@ type Stats struct {
 }
 
 type OnlinerPost struct {
-	ID               int64   `json:"id"`
-	TopicID          int     `json:"topic_id"`
-	TopicURL         string  `json:"topic_url"`
-	Title            string  `json:"title"`
-	Body             string  `json:"body"`
-	PosterUserID     *string `json:"poster_user_id,omitempty"`
-	PosterUsername   *string `json:"poster_username,omitempty"`
-	PosterProfileURL *string `json:"poster_profile_url,omitempty"`
-	Phone            *string `json:"phone,omitempty"`
-	Email            *string `json:"email,omitempty"`
-	Telegram         *string `json:"telegram,omitempty"`
+	ID               int64      `json:"id"`
+	TopicID          int        `json:"topic_id"`
+	TopicURL         string     `json:"topic_url"`
+	Title            string     `json:"title"`
+	Body             string     `json:"body"`
+	PosterUserID     *string    `json:"poster_user_id,omitempty"`
+	PosterUsername   *string    `json:"poster_username,omitempty"`
+	PosterProfileURL *string    `json:"poster_profile_url,omitempty"`
+	Phone            *string    `json:"phone,omitempty"`
+	Email            *string    `json:"email,omitempty"`
+	Telegram         *string    `json:"telegram,omitempty"`
+	DMContact        *string    `json:"dm_contact,omitempty"`
+	DMContactType    *string    `json:"dm_contact_type,omitempty"`
+	DMSentAt         *time.Time `json:"dm_sent_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	ParsedAt         time.Time  `json:"parsed_at"`
 	PostedAt         *time.Time `json:"posted_at,omitempty"`

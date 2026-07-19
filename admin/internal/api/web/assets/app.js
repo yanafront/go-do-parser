@@ -1,7 +1,7 @@
 const emptyFilters = () => ({
   q: '',
   channel: '',
-  has_dm: '',
+  message_status: '',
   date_from: '',
   date_to: '',
 });
@@ -9,6 +9,7 @@ const emptyFilters = () => ({
 const emptyOnlinerFilters = () => ({
   q: '',
   has_contact: '',
+  message_status: '',
   date_from: '',
   date_to: '',
 });
@@ -73,7 +74,85 @@ function formatContact(username, phone) {
     return esc(u);
   }
   if (phone) return esc(phone);
-  return '—';
+  return '';
+}
+
+function messageStatusOptions(selected) {
+  const opts = [
+    ['', 'Все'],
+    ['pending', 'В очереди'],
+    ['sent', 'Отправлено'],
+    ['no_contact', 'Без контакта'],
+    ['skipped', 'Пропущено'],
+  ];
+  return opts.map(([value, label]) => {
+    const sel = selected === value ? 'selected' : '';
+    return `<option value="${value}" ${sel}>${label}</option>`;
+  }).join('');
+}
+
+function pickMessageTarget(row, kind) {
+  const dm = row.dm_contact ? String(row.dm_contact).trim() : '';
+  if (dm && dm !== 'none') {
+    return { contact: dm, status: 'sent', type: row.dm_contact_type || '' };
+  }
+  if (dm === 'none') {
+    return { contact: '', status: 'skipped', type: row.dm_contact_type || 'skipped' };
+  }
+  if (kind === 'onliner') {
+    const tg = row.telegram ? String(row.telegram).trim() : '';
+    const phone = row.phone ? String(row.phone).trim() : '';
+    if (tg) return { contact: tg, status: 'pending', type: 'username' };
+    if (phone) return { contact: phone, status: 'pending', type: 'phone' };
+    return { contact: '', status: 'no_contact', type: '' };
+  }
+  if (kind === 'vacancy') {
+    const u = row.ad_username ? String(row.ad_username).trim() : '';
+    const p = row.ad_phone ? String(row.ad_phone).trim() : '';
+    if (p) return { contact: p, status: 'pending', type: 'phone' };
+    if (u) return { contact: u, status: 'pending', type: 'username' };
+    return { contact: '', status: 'no_contact', type: '' };
+  }
+  const adUser = row.ad_username ? String(row.ad_username).trim() : '';
+  const adPhone = row.ad_phone ? String(row.ad_phone).trim() : '';
+  const posterUser = row.poster_username ? String(row.poster_username).trim() : '';
+  const posterPhone = row.poster_phone ? String(row.poster_phone).trim() : '';
+  if (adUser) return { contact: adUser, status: 'pending', type: 'username' };
+  if (adPhone) return { contact: adPhone, status: 'pending', type: 'phone' };
+  if (posterUser) return { contact: posterUser, status: 'pending', type: 'username' };
+  if (posterPhone) return { contact: posterPhone, status: 'pending', type: 'phone' };
+  return { contact: '', status: 'no_contact', type: '' };
+}
+
+function messageStatusLabel(status) {
+  switch (status) {
+    case 'sent': return 'Отправлено';
+    case 'pending': return 'В очереди';
+    case 'skipped': return 'Пропущено';
+    default: return 'Без контакта';
+  }
+}
+
+function messageStatusClass(status) {
+  switch (status) {
+    case 'sent': return 'badge-sent';
+    case 'pending': return 'badge-pending';
+    case 'skipped': return 'badge-skipped';
+    default: return 'badge-none';
+  }
+}
+
+function formatMessageCell(row, kind) {
+  const t = pickMessageTarget(row, kind);
+  const badge = `<span class="badge ${messageStatusClass(t.status)}">${messageStatusLabel(t.status)}</span>`;
+  if (!t.contact) return badge;
+  let contactHtml;
+  if (t.type === 'phone' || t.contact.startsWith('+') || /^\d/.test(t.contact)) {
+    contactHtml = esc(t.contact);
+  } else {
+    contactHtml = formatContact(t.contact, '') || esc(t.contact);
+  }
+  return `${contactHtml}<br>${badge}`;
 }
 
 function linkCell(row) {
@@ -116,11 +195,11 @@ function buildQuery() {
     offset: String(currentOffset()),
   });
   if (f.q) params.set('q', f.q);
+  if (f.message_status) params.set('message_status', f.message_status);
   if (isOnlinerTab()) {
     if (f.has_contact) params.set('has_contact', f.has_contact);
   } else {
     if (f.channel) params.set('channel', f.channel);
-    if (f.has_dm) params.set('has_dm', f.has_dm);
   }
   if (f.date_from) params.set('date_from', f.date_from);
   if (f.date_to) params.set('date_to', f.date_to);
@@ -197,22 +276,31 @@ function logout() {
 
 function filtersHTML() {
   const f = currentFilters();
+  const messageFilter = `
+        <div class="field">
+          <label>Сообщение</label>
+          <select id="filter-message">
+            ${messageStatusOptions(f.message_status)}
+          </select>
+        </div>`;
+
   if (isOnlinerTab()) {
     return `
     <div class="filters">
       <div class="filters-row">
         <div class="field field-grow">
           <label>Поиск</label>
-          <input type="search" id="filter-q" value="${attrEsc(f.q)}" placeholder="Текст, автор, телефон, email...">
+          <input type="search" id="filter-q" value="${attrEsc(f.q)}" placeholder="Текст, автор, телефон, DM...">
         </div>
         <div class="field">
-          <label>Контакт</label>
+          <label>Контакт для DM</label>
           <select id="filter-contact">
             <option value="" ${f.has_contact === '' ? 'selected' : ''}>Все</option>
             <option value="yes" ${f.has_contact === 'yes' ? 'selected' : ''}>Есть контакт</option>
             <option value="no" ${f.has_contact === 'no' ? 'selected' : ''}>Без контакта</option>
           </select>
         </div>
+        ${messageFilter}
         <div class="field">
           <label>С даты</label>
           <input type="date" id="filter-from" value="${attrEsc(f.date_from)}">
@@ -241,7 +329,7 @@ function filtersHTML() {
       <div class="filters-row">
         <div class="field field-grow">
           <label>Поиск</label>
-          <input type="search" id="filter-q" value="${attrEsc(f.q)}" placeholder="Текст, @username, телефон...">
+          <input type="search" id="filter-q" value="${attrEsc(f.q)}" placeholder="Текст, @username, телефон, DM...">
         </div>
         <div class="field">
           <label>Канал</label>
@@ -250,14 +338,7 @@ function filtersHTML() {
             ${channelOptions}
           </select>
         </div>
-        <div class="field">
-          <label>DM</label>
-          <select id="filter-dm">
-            <option value="" ${f.has_dm === '' ? 'selected' : ''}>Все</option>
-            <option value="yes" ${f.has_dm === 'yes' ? 'selected' : ''}>Отправлено</option>
-            <option value="no" ${f.has_dm === 'no' ? 'selected' : ''}>Не отправлено</option>
-          </select>
-        </div>
+        ${messageFilter}
         <div class="field">
           <label>С даты</label>
           <input type="date" id="filter-from" value="${attrEsc(f.date_from)}">
@@ -281,6 +362,7 @@ function readFiltersFromForm() {
     state.filters.onliner = {
       q: document.getElementById('filter-q')?.value.trim() || '',
       has_contact: document.getElementById('filter-contact')?.value || '',
+      message_status: document.getElementById('filter-message')?.value || '',
       date_from: document.getElementById('filter-from')?.value || '',
       date_to: document.getElementById('filter-to')?.value || '',
     };
@@ -289,7 +371,7 @@ function readFiltersFromForm() {
   state.filters[key] = {
     q: document.getElementById('filter-q')?.value.trim() || '',
     channel: document.getElementById('filter-channel')?.value || '',
-    has_dm: document.getElementById('filter-dm')?.value || '',
+    message_status: document.getElementById('filter-message')?.value || '',
     date_from: document.getElementById('filter-from')?.value || '',
     date_to: document.getElementById('filter-to')?.value || '',
   };
@@ -323,7 +405,7 @@ function bindFilters() {
       await applyFilters();
     }
   });
-  ['filter-channel', 'filter-dm', 'filter-from', 'filter-to'].forEach((id) => {
+  ['filter-channel', 'filter-message', 'filter-from', 'filter-to'].forEach((id) => {
     document.getElementById(id)?.addEventListener('change', () => applyFilters());
   });
   document.getElementById('filter-contact')?.addEventListener('change', () => applyFilters());
@@ -421,8 +503,8 @@ async function renderVacancies() {
       <td data-label="ID">${v.id}</td>
       <td data-label="Канал">@${esc(v.source_channel)}</td>
       <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
-      <td data-label="Контакт в объявлении">${formatContact(v.ad_username, v.ad_phone)}</td>
-      <td data-label="DM кому">${esc(v.dm_contact)}</td>
+      <td data-label="Контакт в объявлении">${formatContact(v.ad_username, v.ad_phone) || '—'}</td>
+      <td data-label="Кому пишем">${formatMessageCell(v, 'vacancy')}</td>
       <td data-label="DM когда">${fmtDate(v.dm_sent_at)}</td>
       <td data-label="Опубликовано">${fmtDate(v.published_at)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
@@ -434,7 +516,7 @@ async function renderVacancies() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>DM</th><th>DM время</th><th>Публикация</th><th>Текст</th>
+          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>Отправлено</th><th>Публикация</th><th>Текст</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="8">Ничего не найдено</td></tr>'}</tbody>
@@ -457,6 +539,8 @@ async function renderOnliner() {
       <td data-label="Автор">${esc(v.poster_username || v.poster_user_id)}</td>
       <td data-label="Профиль">${profileCell(v)}</td>
       <td data-label="Контакты">${formatOnlinerContacts(v)}</td>
+      <td data-label="Кому пишем">${formatMessageCell(v, 'onliner')}</td>
+      <td data-label="Отправлено">${fmtDate(v.dm_sent_at)}</td>
       <td data-label="Заголовок">${esc(v.title)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
       <td data-label="Опубликовано">${fmtDate(v.posted_at)}</td>
@@ -469,10 +553,10 @@ async function renderOnliner() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Профиль</th><th>Контакты</th><th>Заголовок</th><th>Текст</th><th>Опубликовано</th><th>Спарсено</th>
+          <th>ID</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Профиль</th><th>Контакты</th><th>Кому пишем</th><th>Отправлено</th><th>Заголовок</th><th>Текст</th><th>Опубликовано</th><th>Спарсено</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="10">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="12">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}
@@ -489,10 +573,10 @@ async function renderSeekers() {
       <td data-label="ID">${v.id}</td>
       <td data-label="Канал">@${esc(v.source_channel)}</td>
       <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
-      <td data-label="Автор">${formatContact(v.poster_username, v.poster_phone)}</td>
-      <td data-label="Контакт">${formatContact(v.ad_username, v.ad_phone)}</td>
-      <td data-label="DM кому">${esc(v.dm_contact)}</td>
-      <td data-label="DM когда">${fmtDate(v.dm_sent_at)}</td>
+      <td data-label="Автор">${formatContact(v.poster_username, v.poster_phone) || '—'}</td>
+      <td data-label="Контакт">${formatContact(v.ad_username, v.ad_phone) || '—'}</td>
+      <td data-label="Кому пишем">${formatMessageCell(v, 'seeker')}</td>
+      <td data-label="Отправлено">${fmtDate(v.dm_sent_at)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
     </tr>
   `).join('');
@@ -502,7 +586,7 @@ async function renderSeekers() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>DM</th><th>DM время</th><th>Текст</th>
+          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Отправлено</th><th>Текст</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="8">Ничего не найдено</td></tr>'}</tbody>

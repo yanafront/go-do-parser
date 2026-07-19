@@ -402,6 +402,26 @@ func (a *App) processPosts(ctx context.Context, source, channelKey string, lastI
 							}
 							goto seekerDone
 						}
+						if a.seekerStore != nil && a.seekerStore.WasContacted(t.Key) {
+							contact := t.Raw
+							contactType := t.Type
+							if rec, ok := a.seekerStore.Lookup(t.Key); ok {
+								if rec.Type != "" {
+									contactType = rec.Type
+								}
+								if rec.Target != "" {
+									contact = rec.Target
+								}
+							}
+							if err := a.db.UpdateJobSeekerDM(ctx, channelKeyNorm, post.MessageID, contact, contactType, time.Now().UTC()); err != nil {
+								a.log.Warn("update job seeker dm failed",
+									zap.String("source", channelKeyNorm),
+									zap.Int("message_id", post.MessageID),
+									zap.Error(err),
+								)
+							}
+							goto seekerDone
+						}
 					}
 				}
 				if target := a.outreach.HandleSeekerPost(ctx, outreach.PostInfo{
@@ -714,43 +734,73 @@ func (a *App) retryPendingSeekerDMs(ctx context.Context) {
 	if pendingCount, err := a.db.CountPendingSeekerDMs(ctx); err == nil && pendingCount > 0 {
 		a.log.Info("seeker queue", zap.Int("pending", pendingCount))
 	}
-	pending, err := a.db.ListPendingSeekerDMs(ctx, 1)
-	if err != nil {
-		a.log.Warn("list pending seeker dms failed", zap.Error(err))
-		return
-	}
-	for _, p := range pending {
-		if t, ok := outreach.SeekerTarget(strings.TrimSpace(p.Body), p.PosterUsername, p.PosterPhone, p.AdUsername, p.AdPhone, a.contactSkip); ok {
-			if contacted, firstSentAt, err := a.db.WasDMContacted(ctx, t.Type, t.Raw); err != nil {
-				a.log.Warn("check dm contacted failed",
-					zap.String("type", t.Type),
-					zap.String("contact", t.Raw),
-					zap.Error(err),
-				)
-			} else if contacted {
-				sentAt := time.Now().UTC()
-				if firstSentAt != nil {
-					sentAt = firstSentAt.UTC()
-				}
-				if err := a.db.UpdateJobSeekerDM(ctx, p.SourceChannel, p.SourceMessageID, t.Raw, t.Type, sentAt); err != nil {
-					a.log.Warn("update job seeker dm failed",
-						zap.String("source", p.SourceChannel),
-						zap.Int("message_id", p.SourceMessageID),
-						zap.Error(err),
-					)
-				}
-				continue
-			}
-		} else {
+
+	for i := 0; i < 50; i++ {
+		pending, err := a.db.ListPendingSeekerDMs(ctx, 1)
+		if err != nil {
+			a.log.Warn("list pending seeker dms failed", zap.Error(err))
+			return
+		}
+		if len(pending) == 0 {
+			return
+		}
+		p := pending[0]
+
+		t, ok := outreach.SeekerTarget(strings.TrimSpace(p.Body), p.PosterUsername, p.PosterPhone, p.AdUsername, p.AdPhone, a.contactSkip)
+		if !ok {
 			if err := a.db.UpdateJobSeekerDM(ctx, p.SourceChannel, p.SourceMessageID, "none", "skipped", time.Now().UTC()); err != nil {
 				a.log.Warn("mark seeker without contact failed",
 					zap.String("source", p.SourceChannel),
 					zap.Int("message_id", p.SourceMessageID),
 					zap.Error(err),
 				)
+				return
 			}
 			continue
 		}
+		if contacted, firstSentAt, err := a.db.WasDMContacted(ctx, t.Type, t.Raw); err != nil {
+			a.log.Warn("check dm contacted failed",
+				zap.String("type", t.Type),
+				zap.String("contact", t.Raw),
+				zap.Error(err),
+			)
+		} else if contacted {
+			sentAt := time.Now().UTC()
+			if firstSentAt != nil {
+				sentAt = firstSentAt.UTC()
+			}
+			if err := a.db.UpdateJobSeekerDM(ctx, p.SourceChannel, p.SourceMessageID, t.Raw, t.Type, sentAt); err != nil {
+				a.log.Warn("update job seeker dm failed",
+					zap.String("source", p.SourceChannel),
+					zap.Int("message_id", p.SourceMessageID),
+					zap.Error(err),
+				)
+				return
+			}
+			continue
+		}
+		if a.seekerStore != nil && a.seekerStore.WasContacted(t.Key) {
+			contact := t.Raw
+			contactType := t.Type
+			if rec, ok := a.seekerStore.Lookup(t.Key); ok {
+				if rec.Type != "" {
+					contactType = rec.Type
+				}
+				if rec.Target != "" {
+					contact = rec.Target
+				}
+			}
+			if err := a.db.UpdateJobSeekerDM(ctx, p.SourceChannel, p.SourceMessageID, contact, contactType, time.Now().UTC()); err != nil {
+				a.log.Warn("update job seeker dm failed",
+					zap.String("source", p.SourceChannel),
+					zap.Int("message_id", p.SourceMessageID),
+					zap.Error(err),
+				)
+				return
+			}
+			continue
+		}
+
 		if target := a.outreach.HandleSeekerPost(ctx, outreach.PostInfo{
 			SourceChannel:  p.SourceChannel,
 			SourceLink:     p.SourceMessageLink,
@@ -764,5 +814,6 @@ func (a *App) retryPendingSeekerDMs(ctx context.Context) {
 		}); target != nil {
 			a.updateJobSeekerDM(ctx, p.SourceChannel, p.SourceMessageID, *target)
 		}
+		return
 	}
 }

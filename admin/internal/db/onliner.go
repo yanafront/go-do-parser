@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 func (db *DB) ListOnlinerPosts(ctx context.Context, filter OnlinerListFilter, limit, offset int) ([]OnlinerPost, int64, error) {
@@ -13,22 +14,24 @@ func (db *DB) ListOnlinerPosts(ctx context.Context, filter OnlinerListFilter, li
 		offset = 0
 	}
 	where, args, nextArg := filter.where(1)
+	from := filter.fromClause()
 
 	var total int64
-	countQuery := "SELECT COUNT(*) FROM onliner_posts " + where
+	countQuery := "SELECT COUNT(*) " + from + " " + where
 	if err := db.sql.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	listQuery := fmt.Sprintf(`
-SELECT id, topic_id, topic_url, title, body,
-       poster_user_id, poster_username, poster_profile_url,
-       phone, email, telegram, created_at, parsed_at, posted_at
-FROM onliner_posts
+SELECT o.id, o.topic_id, o.topic_url, o.title, o.body,
+       o.poster_user_id, o.poster_username, o.poster_profile_url,
+       o.phone, o.email, o.telegram, o.created_at, o.parsed_at, o.posted_at,
+       j.dm_contact, j.dm_contact_type, j.dm_sent_at
 %s
-ORDER BY COALESCE(posted_at, parsed_at) DESC, id DESC
+%s
+ORDER BY COALESCE(o.posted_at, o.parsed_at) DESC, o.id DESC
 LIMIT $%d OFFSET $%d
-`, where, nextArg, nextArg+1)
+`, from, where, nextArg, nextArg+1)
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.sql.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {
@@ -43,6 +46,7 @@ LIMIT $%d OFFSET $%d
 			&p.ID, &p.TopicID, &p.TopicURL, &p.Title, &p.Body,
 			&p.PosterUserID, &p.PosterUsername, &p.PosterProfileURL,
 			&p.Phone, &p.Email, &p.Telegram, &p.CreatedAt, &p.ParsedAt, &p.PostedAt,
+			&p.DMContact, &p.DMContactType, &p.DMSentAt,
 		); err != nil {
 			return nil, 0, err
 		}

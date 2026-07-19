@@ -126,10 +126,11 @@ func (s *Server) handleOnlinerPosts(w http.ResponseWriter, r *http.Request) {
 func onlinerFilterParams(r *http.Request) db.OnlinerListFilter {
 	q := r.URL.Query()
 	return db.OnlinerListFilter{
-		Search:     strings.TrimSpace(q.Get("q")),
-		HasContact: strings.TrimSpace(q.Get("has_contact")),
-		DateFrom:   strings.TrimSpace(q.Get("date_from")),
-		DateTo:     strings.TrimSpace(q.Get("date_to")),
+		Search:        strings.TrimSpace(q.Get("q")),
+		HasContact:    strings.TrimSpace(q.Get("has_contact")),
+		MessageStatus: strings.TrimSpace(q.Get("message_status")),
+		DateFrom:      strings.TrimSpace(q.Get("date_from")),
+		DateTo:        strings.TrimSpace(q.Get("date_to")),
 	}
 }
 
@@ -172,11 +173,12 @@ func listFilterParams(r *http.Request) db.ListFilter {
 	search := strings.TrimSpace(q.Get("q"))
 	search = strings.TrimPrefix(search, "@")
 	return db.ListFilter{
-		Search:   search,
-		Channel:  strings.TrimSpace(strings.TrimPrefix(q.Get("channel"), "@")),
-		HasDM:    strings.TrimSpace(q.Get("has_dm")),
-		DateFrom: strings.TrimSpace(q.Get("date_from")),
-		DateTo:   strings.TrimSpace(q.Get("date_to")),
+		Search:        search,
+		Channel:       strings.TrimSpace(strings.TrimPrefix(q.Get("channel"), "@")),
+		HasDM:         strings.TrimSpace(q.Get("has_dm")),
+		MessageStatus: strings.TrimSpace(q.Get("message_status")),
+		DateFrom:      strings.TrimSpace(q.Get("date_from")),
+		DateTo:        strings.TrimSpace(q.Get("date_to")),
 	}
 }
 

@@ -113,6 +113,14 @@ func (s *Store) WasContacted(key string) bool {
 	return ok
 }
 
+func (s *Store) Lookup(key string) (Record, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensure()
+	rec, ok := s.data.Contacted[key]
+	return rec, ok
+}
+
 func (s *Store) DailySent() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

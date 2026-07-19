@@ -146,6 +146,19 @@ th { color: #71767b; font-weight: 600; }
   flex-wrap: wrap;
 }
 .muted { color: #71767b; }
+.badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.badge-sent { background: #0f3d2e; color: #6ee7b7; }
+.badge-pending { background: #3b2f0a; color: #fcd34d; }
+.badge-skipped { background: #3f1d1d; color: #fca5a5; }
+.badge-none { background: #1f2937; color: #9ca3af; }
 @media (max-width: 900px) {
   .filters-row {
     grid-template-columns: 1fr;

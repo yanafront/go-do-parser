@@ -7,19 +7,12 @@ import (
 )
 
 type ListFilter struct {
-	Search   string
-	Channel  string
-	HasDM    string
-	DateFrom string
-	DateTo   string
-}
-
-func (f ListFilter) vacancyWhere(startArg int) (string, []any, int) {
-	return f.buildWhere(startArg, vacancySearchCols)
-}
-
-func (f ListFilter) jobSeekerWhere(startArg int) (string, []any, int) {
-	return f.buildWhere(startArg, jobSeekerSearchCols)
+	Search        string
+	Channel       string
+	HasDM         string
+	MessageStatus string
+	DateFrom      string
+	DateTo        string
 }
 
 var vacancySearchCols = []string{
@@ -42,7 +35,42 @@ var jobSeekerSearchCols = []string{
 	"COALESCE(dm_contact, '')",
 }
 
-func (f ListFilter) buildWhere(startArg int, searchCols []string) (string, []any, int) {
+func (f ListFilter) vacancyWhere(startArg int) (string, []any, int) {
+	return f.buildWhere(startArg, vacancySearchCols, vacancyPendingContactSQL)
+}
+
+func (f ListFilter) jobSeekerWhere(startArg int) (string, []any, int) {
+	return f.buildWhere(startArg, jobSeekerSearchCols, jobSeekerPendingContactSQL)
+}
+
+const vacancyPendingContactSQL = `(
+	COALESCE(ad_phone, '') <> '' OR
+	COALESCE(ad_username, '') <> '' OR
+	body ~* '(\\+?\\s*375|8[\\s\\-]*0\\d{2})'
+)`
+
+const jobSeekerPendingContactSQL = `(
+	COALESCE(ad_username, '') <> '' OR
+	COALESCE(ad_phone, '') <> '' OR
+	COALESCE(poster_username, '') <> '' OR
+	COALESCE(poster_phone, '') <> ''
+)`
+
+func (f ListFilter) messageStatus() string {
+	if v := strings.TrimSpace(f.MessageStatus); v != "" {
+		return v
+	}
+	switch strings.TrimSpace(f.HasDM) {
+	case "yes":
+		return "sent"
+	case "no":
+		return "pending"
+	default:
+		return strings.TrimSpace(f.HasDM)
+	}
+}
+
+func (f ListFilter) buildWhere(startArg int, searchCols []string, pendingSQL string) (string, []any, int) {
 	var parts []string
 	var args []any
 	n := startArg
@@ -66,11 +94,17 @@ func (f ListFilter) buildWhere(startArg int, searchCols []string) (string, []any
 		n++
 	}
 
-	switch strings.TrimSpace(f.HasDM) {
-	case "yes":
-		parts = append(parts, "dm_contact IS NOT NULL AND dm_contact <> ''")
-	case "no":
+	switch strings.TrimSpace(f.messageStatus()) {
+	case "sent":
+		parts = append(parts, "dm_contact IS NOT NULL AND dm_contact <> '' AND dm_contact <> 'none'")
+	case "pending":
 		parts = append(parts, "(dm_contact IS NULL OR dm_contact = '')")
+		parts = append(parts, "("+pendingSQL+")")
+	case "no_contact":
+		parts = append(parts, "(dm_contact IS NULL OR dm_contact = '')")
+		parts = append(parts, "NOT ("+pendingSQL+")")
+	case "skipped":
+		parts = append(parts, "dm_contact = 'none'")
 	}
 
 	dateFrom := strings.TrimSpace(f.DateFrom)

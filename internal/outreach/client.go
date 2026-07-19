@@ -255,11 +255,13 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 			zap.String("target", target.Raw),
 			zap.String("type", target.Type),
 		)
-		return nil
+		return seekerDoneTarget(target, s.seekerStore)
 	}
 
 	if err := s.send(ctx, target, message); err != nil {
-		s.onSeekerSendFailed(target, post, err)
+		if s.onSeekerSendFailed(target, post, err) {
+			return &Target{Key: target.Key, Type: "skipped", Raw: target.Raw}
+		}
 		return nil
 	}
 
@@ -314,7 +316,7 @@ func (s *Service) scheduleSeekerNext() time.Duration {
 	return minDelay
 }
 
-func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) {
+func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) bool {
 	msg := err.Error()
 	rec := Record{
 		Target:  target.Raw,
@@ -323,6 +325,7 @@ func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) {
 		Source:  post.SourceChannel,
 		Message: post.MessageID,
 	}
+	markedSkipped := false
 
 	switch {
 	case tgerr.Is(err, "PEER_FLOOD"):
@@ -341,6 +344,7 @@ func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) {
 		if s.seekerStore != nil {
 			_ = s.seekerStore.MarkSkipped(target.Key, rec)
 		}
+		markedSkipped = true
 	default:
 		if wait, ok := tgerr.AsFloodWait(err); ok {
 			s.log.Warn("seeker flood wait",
@@ -361,6 +365,20 @@ func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) {
 	if s.seekerRateStore != nil {
 		_ = s.seekerRateStore.ScheduleNext(s.seekerCfg.MinDelay(), s.seekerCfg.MaxDelay())
 	}
+	return markedSkipped
+}
+
+func seekerDoneTarget(target Target, store *Store) *Target {
+	out := Target{Key: target.Key, Type: target.Type, Raw: target.Raw}
+	if store != nil {
+		if rec, ok := store.Lookup(target.Key); ok && rec.Type != "" {
+			out.Type = rec.Type
+			if rec.Target != "" {
+				out.Raw = rec.Target
+			}
+		}
+	}
+	return &out
 }
 
 func postText(post PostInfo) string {
