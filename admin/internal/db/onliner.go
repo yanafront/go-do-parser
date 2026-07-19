@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"time"
 )
 
 func (db *DB) ListOnlinerPosts(ctx context.Context, filter OnlinerListFilter, limit, offset int) ([]OnlinerPost, int64, error) {
