@@ -155,6 +155,26 @@ function formatMessageCell(row, kind) {
   return `${contactHtml}<br>${badge}`;
 }
 
+function seekerStatusSelect(row) {
+  const t = pickMessageTarget(row, 'seeker');
+  const current = t.status === 'sent' ? 'sent' : 'pending';
+  return `
+    <select class="dm-status" data-id="${row.id}" data-prev="${current}">
+      <option value="pending" ${current === 'pending' ? 'selected' : ''}>Не отправлено</option>
+      <option value="sent" ${current === 'sent' ? 'selected' : ''}>Отправлено</option>
+    </select>
+  `;
+}
+
+function formatSeekerContactCell(row) {
+  const t = pickMessageTarget(row, 'seeker');
+  if (!t.contact) return '—';
+  if (t.type === 'phone' || t.contact.startsWith('+') || /^\d/.test(t.contact)) {
+    return esc(t.contact);
+  }
+  return formatContact(t.contact, '') || esc(t.contact);
+}
+
 function linkCell(row) {
   const url = messageLink(row);
   if (!url) return '—';
@@ -569,14 +589,16 @@ async function renderSeekers() {
   const data = await api(`/api/job-seekers?${buildQuery()}`);
   syncPaging(data);
   const rows = (data.items || []).map((v) => `
-    <tr>
+    <tr data-seeker-id="${v.id}">
       <td data-label="ID">${v.id}</td>
+      <td data-label="Дата">${fmtDate(v.created_at)}</td>
       <td data-label="Канал">@${esc(v.source_channel)}</td>
       <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
       <td data-label="Автор">${formatContact(v.poster_username, v.poster_phone) || '—'}</td>
       <td data-label="Контакт">${formatContact(v.ad_username, v.ad_phone) || '—'}</td>
-      <td data-label="Кому пишем">${formatMessageCell(v, 'seeker')}</td>
-      <td data-label="Отправлено">${fmtDate(v.dm_sent_at)}</td>
+      <td data-label="Кому пишем" class="seeker-contact-cell">${formatSeekerContactCell(v)}</td>
+      <td data-label="Статус">${seekerStatusSelect(v)}</td>
+      <td data-label="Отправлено" class="seeker-sent-cell">${fmtDate(v.dm_sent_at)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
     </tr>
   `).join('');
@@ -586,16 +608,48 @@ async function renderSeekers() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Отправлено</th><th>Текст</th>
+          <th>ID</th><th>Дата</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="8">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="10">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}
   `;
   bindFilters();
   bindPager();
+  bindSeekerStatus();
+}
+
+function bindSeekerStatus() {
+  document.querySelectorAll('select.dm-status').forEach((el) => {
+    el.onchange = async () => {
+      const id = el.dataset.id;
+      const status = el.value;
+      const prev = el.dataset.prev || 'pending';
+      el.disabled = true;
+      try {
+        const item = await api(`/api/job-seekers/${id}/dm`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status }),
+        });
+        el.dataset.prev = status;
+        const row = el.closest('tr');
+        if (row) {
+          const contactCell = row.querySelector('.seeker-contact-cell');
+          const sentCell = row.querySelector('.seeker-sent-cell');
+          if (contactCell) contactCell.innerHTML = formatSeekerContactCell(item);
+          if (sentCell) sentCell.textContent = fmtDate(item.dm_sent_at);
+        }
+      } catch (err) {
+        el.value = prev;
+        alert(err.message === 'unauthorized' ? 'Сессия истекла' : `Не удалось обновить статус: ${err.message}`);
+        if (err.message === 'unauthorized') logout();
+      } finally {
+        el.disabled = false;
+      }
+    };
+  });
 }
 
 function pagerHTML(data) {

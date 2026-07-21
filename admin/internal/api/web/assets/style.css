@@ -159,6 +159,17 @@ th { color: #71767b; font-weight: 600; }
 .badge-pending { background: #3b2f0a; color: #fcd34d; }
 .badge-skipped { background: #3f1d1d; color: #fca5a5; }
 .badge-none { background: #1f2937; color: #9ca3af; }
+select.dm-status {
+  width: auto;
+  min-width: 140px;
+  padding: 6px 10px;
+  margin: 0;
+  font-size: 13px;
+  border-radius: 8px;
+}
+select.dm-status:disabled {
+  opacity: 0.5;
+}
 @media (max-width: 900px) {
   .filters-row {
     grid-template-columns: 1fr;
