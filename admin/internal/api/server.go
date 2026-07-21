@@ -34,6 +34,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/job-seekers", s.authRequired(http.HandlerFunc(s.handleJobSeekers)))
 	mux.Handle("PATCH /api/job-seekers/{id}/dm", s.authRequired(http.HandlerFunc(s.handleUpdateJobSeekerDM)))
 	mux.Handle("GET /api/onliner-posts", s.authRequired(http.HandlerFunc(s.handleOnlinerPosts)))
+	mux.Handle("PATCH /api/onliner-posts/{id}/dm", s.authRequired(http.HandlerFunc(s.handleUpdateOnlinerDM)))
 
 	webRoot, _ := fs.Sub(webFS, "web")
 	fileServer := http.FileServer(http.FS(webRoot))
@@ -160,6 +161,36 @@ func (s *Server) handleUpdateJobSeekerDM(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	item, err := s.db.UpdateJobSeekerDMStatus(r.Context(), id, req.Status)
+	if err != nil {
+		msg := err.Error()
+		if msg == "not found" {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		if msg == "invalid status" {
+			writeError(w, http.StatusBadRequest, "invalid status")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleUpdateOnlinerDM(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	item, err := s.db.UpdateOnlinerDMStatus(r.Context(), id, req.Status)
 	if err != nil {
 		msg := err.Error()
 		if msg == "not found" {

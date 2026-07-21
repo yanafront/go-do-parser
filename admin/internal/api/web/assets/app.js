@@ -155,14 +155,26 @@ function formatMessageCell(row, kind) {
   return `${contactHtml}<br>${badge}`;
 }
 
-function seekerStatusSelect(row) {
-  const t = pickMessageTarget(row, 'seeker');
-  const current = t.status === 'sent' ? 'sent' : 'pending';
+function dmSentStatus(row, kind) {
+  const t = pickMessageTarget(row, kind);
+  return t.status === 'sent' ? 'sent' : 'pending';
+}
+
+function dmStatusRadios(row, kind) {
+  const current = dmSentStatus(row, kind);
+  const id = row.id;
+  const name = `dm-${kind}-${id}`;
   return `
-    <select class="dm-status" data-id="${row.id}" data-prev="${current}">
-      <option value="pending" ${current === 'pending' ? 'selected' : ''}>Не отправлено</option>
-      <option value="sent" ${current === 'sent' ? 'selected' : ''}>Отправлено</option>
-    </select>
+    <div class="dm-status-radios" data-id="${id}" data-kind="${kind}" data-prev="${current}">
+      <label class="dm-radio dm-radio-pending ${current === 'pending' ? 'is-active' : ''}">
+        <input type="radio" name="${name}" value="pending" ${current === 'pending' ? 'checked' : ''}>
+        <span>Не отправлено</span>
+      </label>
+      <label class="dm-radio dm-radio-sent ${current === 'sent' ? 'is-active' : ''}">
+        <input type="radio" name="${name}" value="sent" ${current === 'sent' ? 'checked' : ''}>
+        <span>Отправлено</span>
+      </label>
+    </div>
   `;
 }
 
@@ -173,6 +185,16 @@ function formatSeekerContactCell(row) {
     return esc(t.contact);
   }
   return formatContact(t.contact, '') || esc(t.contact);
+}
+
+function formatOnlinerContactCell(row) {
+  const t = pickMessageTarget(row, 'onliner');
+  if (!t.contact) return '—';
+  if (t.type === 'phone' || t.contact.startsWith('+') || /^\d/.test(t.contact)) {
+    return esc(t.contact);
+  }
+  const u = String(t.contact);
+  return /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(u) ? `@${esc(u)}` : esc(u);
 }
 
 function linkCell(row) {
@@ -552,19 +574,18 @@ async function renderOnliner() {
   const data = await api(`/api/onliner-posts?${buildQuery()}`);
   syncPaging(data);
   const rows = (data.items || []).map((v) => `
-    <tr>
+    <tr data-onliner-id="${v.id}">
       <td data-label="ID">${v.id}</td>
+      <td data-label="Дата">${fmtDate(v.posted_at || v.parsed_at)}</td>
       <td data-label="Тема">${esc(v.topic_id)}</td>
       <td data-label="Ссылка" class="link-cell">${v.topic_url ? `<a href="${attrEsc(v.topic_url)}" target="_blank" rel="noopener noreferrer">Открыть</a>` : '—'}</td>
       <td data-label="Автор">${esc(v.poster_username || v.poster_user_id)}</td>
-      <td data-label="Профиль">${profileCell(v)}</td>
       <td data-label="Контакты">${formatOnlinerContacts(v)}</td>
-      <td data-label="Кому пишем">${formatMessageCell(v, 'onliner')}</td>
-      <td data-label="Отправлено">${fmtDate(v.dm_sent_at)}</td>
+      <td data-label="Кому пишем" class="onliner-contact-cell">${formatOnlinerContactCell(v)}</td>
+      <td data-label="Статус">${dmStatusRadios(v, 'onliner')}</td>
+      <td data-label="Отправлено" class="onliner-sent-cell">${fmtDate(v.dm_sent_at)}</td>
       <td data-label="Заголовок">${esc(v.title)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
-      <td data-label="Опубликовано">${fmtDate(v.posted_at)}</td>
-      <td data-label="Спарсено">${fmtDate(v.parsed_at)}</td>
     </tr>
   `).join('');
   document.getElementById('content').innerHTML = `
@@ -573,16 +594,17 @@ async function renderOnliner() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Профиль</th><th>Контакты</th><th>Кому пишем</th><th>Отправлено</th><th>Заголовок</th><th>Текст</th><th>Опубликовано</th><th>Спарсено</th>
+          <th>ID</th><th>Дата</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Контакты</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Заголовок</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="12">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}
   `;
   bindFilters();
   bindPager();
+  bindDmStatus();
 }
 
 async function renderSeekers() {
@@ -597,7 +619,7 @@ async function renderSeekers() {
       <td data-label="Автор">${formatContact(v.poster_username, v.poster_phone) || '—'}</td>
       <td data-label="Контакт">${formatContact(v.ad_username, v.ad_phone) || '—'}</td>
       <td data-label="Кому пишем" class="seeker-contact-cell">${formatSeekerContactCell(v)}</td>
-      <td data-label="Статус">${seekerStatusSelect(v)}</td>
+      <td data-label="Статус">${dmStatusRadios(v, 'seeker')}</td>
       <td data-label="Отправлено" class="seeker-sent-cell">${fmtDate(v.dm_sent_at)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
     </tr>
@@ -618,37 +640,58 @@ async function renderSeekers() {
   `;
   bindFilters();
   bindPager();
-  bindSeekerStatus();
+  bindDmStatus();
 }
 
-function bindSeekerStatus() {
-  document.querySelectorAll('select.dm-status').forEach((el) => {
-    el.onchange = async () => {
-      const id = el.dataset.id;
-      const status = el.value;
-      const prev = el.dataset.prev || 'pending';
-      el.disabled = true;
-      try {
-        const item = await api(`/api/job-seekers/${id}/dm`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status }),
-        });
-        el.dataset.prev = status;
-        const row = el.closest('tr');
-        if (row) {
-          const contactCell = row.querySelector('.seeker-contact-cell');
-          const sentCell = row.querySelector('.seeker-sent-cell');
-          if (contactCell) contactCell.innerHTML = formatSeekerContactCell(item);
-          if (sentCell) sentCell.textContent = fmtDate(item.dm_sent_at);
+function bindDmStatus() {
+  document.querySelectorAll('.dm-status-radios').forEach((group) => {
+    group.querySelectorAll('input[type="radio"]').forEach((input) => {
+      input.onchange = async () => {
+        const id = group.dataset.id;
+        const kind = group.dataset.kind;
+        const status = input.value;
+        const prev = group.dataset.prev || 'pending';
+        if (status === prev) return;
+
+        group.querySelectorAll('.dm-radio').forEach((label) => label.classList.remove('is-active'));
+        input.closest('.dm-radio')?.classList.add('is-active');
+        group.querySelectorAll('input').forEach((el) => { el.disabled = true; });
+
+        const path = kind === 'onliner'
+          ? `/api/onliner-posts/${id}/dm`
+          : `/api/job-seekers/${id}/dm`;
+
+        try {
+          const item = await api(path, {
+            method: 'PATCH',
+            body: JSON.stringify({ status }),
+          });
+          group.dataset.prev = status;
+          const row = group.closest('tr');
+          if (row) {
+            const contactCell = row.querySelector(kind === 'onliner' ? '.onliner-contact-cell' : '.seeker-contact-cell');
+            const sentCell = row.querySelector(kind === 'onliner' ? '.onliner-sent-cell' : '.seeker-sent-cell');
+            if (contactCell) {
+              contactCell.innerHTML = kind === 'onliner'
+                ? formatOnlinerContactCell(item)
+                : formatSeekerContactCell(item);
+            }
+            if (sentCell) sentCell.textContent = fmtDate(item.dm_sent_at);
+          }
+        } catch (err) {
+          const prevInput = group.querySelector(`input[value="${prev}"]`);
+          group.querySelectorAll('.dm-radio').forEach((label) => label.classList.remove('is-active'));
+          if (prevInput) {
+            prevInput.checked = true;
+            prevInput.closest('.dm-radio')?.classList.add('is-active');
+          }
+          alert(err.message === 'unauthorized' ? 'Сессия истекла' : `Не удалось обновить статус: ${err.message}`);
+          if (err.message === 'unauthorized') logout();
+        } finally {
+          group.querySelectorAll('input').forEach((el) => { el.disabled = false; });
         }
-      } catch (err) {
-        el.value = prev;
-        alert(err.message === 'unauthorized' ? 'Сессия истекла' : `Не удалось обновить статус: ${err.message}`);
-        if (err.message === 'unauthorized') logout();
-      } finally {
-        el.disabled = false;
-      }
-    };
+      };
+    });
   });
 }
 

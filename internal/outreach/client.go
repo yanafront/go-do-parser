@@ -317,7 +317,6 @@ func (s *Service) scheduleSeekerNext() time.Duration {
 }
 
 func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) bool {
-	msg := err.Error()
 	rec := Record{
 		Target:  target.Raw,
 		Type:    "skipped",
@@ -328,15 +327,7 @@ func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) bo
 	markedSkipped := false
 
 	switch {
-	case tgerr.Is(err, "PEER_FLOOD"):
-		s.log.Error("seeker paused: Telegram PEER_FLOOD, account restricted for cold DM",
-			zap.String("target", target.Raw),
-			zap.String("phone", telegram.MaskPhone(s.phone)),
-		)
-		if s.seekerRateStore != nil {
-			_ = s.seekerRateStore.PauseUntil(time.Now().Add(24 * time.Hour))
-		}
-	case strings.Contains(msg, "not found in Telegram"), strings.Contains(msg, "is not a user account"):
+	case isUnreachableContactErr(err):
 		s.log.Info("seeker skipped: unreachable contact",
 			zap.String("target", target.Raw),
 			zap.Error(err),
@@ -345,6 +336,14 @@ func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) bo
 			_ = s.seekerStore.MarkSkipped(target.Key, rec)
 		}
 		markedSkipped = true
+	case tgerr.Is(err, "PEER_FLOOD"):
+		s.log.Error("seeker paused: Telegram PEER_FLOOD, account restricted for cold DM",
+			zap.String("target", target.Raw),
+			zap.String("phone", telegram.MaskPhone(s.phone)),
+		)
+		if s.seekerRateStore != nil {
+			_ = s.seekerRateStore.PauseUntil(time.Now().Add(24 * time.Hour))
+		}
 	default:
 		if wait, ok := tgerr.AsFloodWait(err); ok {
 			s.log.Warn("seeker flood wait",
@@ -379,6 +378,30 @@ func seekerDoneTarget(target Target, store *Store) *Target {
 		}
 	}
 	return &out
+}
+
+func isUnreachableContactErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "not found in Telegram") ||
+		strings.Contains(msg, "is not a user account") ||
+		strings.Contains(msg, "resolve @") {
+		return true
+	}
+	for _, code := range []string{
+		"USERNAME_NOT_OCCUPIED",
+		"USERNAME_INVALID",
+		"PEER_ID_INVALID",
+		"INPUT_USER_DEACTIVATED",
+		"USER_ID_INVALID",
+	} {
+		if tgerr.Is(err, code) {
+			return true
+		}
+	}
+	return false
 }
 
 func postText(post PostInfo) string {
