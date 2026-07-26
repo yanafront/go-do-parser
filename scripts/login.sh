@@ -31,4 +31,5 @@ if [ -f .env ]; then
   set +a
 fi
 unset TG_SESSION
+export DATA_DIR="./data"
 exec "$GO_BIN" run ./cmd/login "$@"

@@ -10,6 +10,7 @@ import (
 
 	"github.com/anadubesko/go-do-parser/admin/internal/auth"
 	"github.com/anadubesko/go-do-parser/admin/internal/db"
+	"github.com/anadubesko/go-do-parser/admin/internal/seekermsg"
 )
 
 //go:embed web/*
@@ -143,6 +144,23 @@ func (s *Server) handleJobSeekers(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
+	}
+	for i := range items {
+		if items[i].DMMessage != nil && strings.TrimSpace(*items[i].DMMessage) != "" {
+			continue
+		}
+		if items[i].DMContact != nil {
+			c := strings.TrimSpace(*items[i].DMContact)
+			if c != "" && c != "none" {
+				continue
+			}
+		}
+		link := ""
+		if items[i].SourceMessageLink != nil {
+			link = *items[i].SourceMessageLink
+		}
+		preview := seekermsg.Preview(items[i].SourceChannel, link, items[i].SourceMessageID)
+		items[i].DMMessage = &preview
 	}
 	writeJSON(w, http.StatusOK, pageResponse(items, total, limit, offset))
 }

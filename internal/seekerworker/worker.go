@@ -343,7 +343,7 @@ func (p *Pool) tick(
 	if target == nil {
 		return
 	}
-	if err := p.db.UpdateJobSeekerDM(ctx, claimed.SourceChannel, claimed.SourceMessageID, target.Raw, target.Type, time.Now().UTC()); err != nil {
+	if err := p.db.UpdateJobSeekerDM(ctx, claimed.SourceChannel, claimed.SourceMessageID, target.Raw, target.Type, time.Now().UTC(), target.Message); err != nil {
 		log.Warn("update job seeker dm failed", zap.Error(err))
 		return
 	}

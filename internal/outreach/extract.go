@@ -9,9 +9,10 @@ var phoneRE = regexp.MustCompile(`(?i)(?:\+?\s*375[\s\-]*\d{2}[\s\-]*\d{3}[\s\-]
 var usernameRE = regexp.MustCompile(`(?i)@([a-zA-Z][a-zA-Z0-9_]{4,31})`)
 
 type Target struct {
-	Key  string
-	Type string
-	Raw  string
+	Key     string
+	Type    string
+	Raw     string
+	Message string
 }
 
 func ExtractTargets(text string) []Target {

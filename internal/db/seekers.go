@@ -111,14 +111,26 @@ WHERE (dm_contact IS NULL OR dm_contact = '')
 	return n, nil
 }
 
-func (db *DB) UpdateJobSeekerDM(ctx context.Context, sourceChannel string, messageID int, contact, contactType string, sentAt time.Time) error {
+func (db *DB) UpdateJobSeekerDM(ctx context.Context, sourceChannel string, messageID int, contact, contactType string, sentAt time.Time, message ...string) error {
+	var dmMessage any
+	if len(message) > 0 {
+		if strings.TrimSpace(message[0]) != "" {
+			dmMessage = strings.TrimSpace(message[0])
+		} else {
+			dmMessage = nil
+		}
+	}
 	_, err := db.sql.ExecContext(ctx, `
 UPDATE job_seeker_posts
 SET dm_contact = $1, dm_contact_type = $2, dm_sent_at = $3,
+    dm_message = CASE
+      WHEN $7 THEN $4
+      ELSE COALESCE($4, dm_message)
+    END,
     dm_claimed_by = NULL, dm_claimed_at = NULL
-WHERE source_channel = $4 AND source_message_id = $5
+WHERE source_channel = $5 AND source_message_id = $6
 `,
-		contact, contactType, sentAt.UTC(), sourceChannel, messageID,
+		contact, contactType, sentAt.UTC(), dmMessage, sourceChannel, messageID, len(message) > 0,
 	)
 	if err != nil {
 		return fmt.Errorf("update job seeker dm: %w", err)

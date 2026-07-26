@@ -722,7 +722,7 @@ func (a *App) updateJobSeekerDM(ctx context.Context, sourceChannel string, messa
 		return
 	}
 	sentAt := time.Now().UTC()
-	if err := a.db.UpdateJobSeekerDM(ctx, sourceChannel, messageID, target.Raw, target.Type, sentAt); err != nil {
+	if err := a.db.UpdateJobSeekerDM(ctx, sourceChannel, messageID, target.Raw, target.Type, sentAt, target.Message); err != nil {
 		a.log.Warn("update job seeker dm failed",
 			zap.String("source", sourceChannel),
 			zap.Int("message_id", messageID),

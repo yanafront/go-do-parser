@@ -178,6 +178,12 @@ function dmStatusRadios(row, kind) {
   `;
 }
 
+function formatDMMessageCell(row) {
+  const msg = row.dm_message ? String(row.dm_message).trim() : '';
+  if (!msg) return '—';
+  return `<div class="dm-message-cell">${esc(msg)}</div>`;
+}
+
 function formatSeekerContactCell(row) {
   const t = pickMessageTarget(row, 'seeker');
   if (!t.contact) return '—';
@@ -621,6 +627,7 @@ async function renderSeekers() {
       <td data-label="Кому пишем" class="seeker-contact-cell">${formatSeekerContactCell(v)}</td>
       <td data-label="Статус">${dmStatusRadios(v, 'seeker')}</td>
       <td data-label="Отправлено" class="seeker-sent-cell">${fmtDate(v.dm_sent_at)}</td>
+      <td data-label="Сообщение" class="seeker-dm-cell">${formatDMMessageCell(v)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
     </tr>
   `).join('');
@@ -630,10 +637,10 @@ async function renderSeekers() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Дата</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Текст</th>
+          <th>ID</th><th>Дата</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Сообщение</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="10">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}

@@ -303,6 +303,7 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 		zap.Int("daily_sent", s.seekerStore.DailySent()),
 		zap.Duration("next_delay", nextDelay),
 	)
+	target.Message = message
 	return &target
 }
 

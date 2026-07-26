@@ -20,13 +20,13 @@ func (db *DB) UpdateJobSeekerDMStatus(ctx context.Context, id int64, status stri
 	err := db.sql.QueryRowContext(ctx, `
 SELECT id, source_channel, source_message_id, source_message_link, body,
        poster_username, poster_phone, ad_username, ad_phone,
-       dm_contact, dm_contact_type, dm_sent_at, created_at
+       dm_contact, dm_contact_type, dm_sent_at, dm_message, created_at
 FROM job_seeker_posts
 WHERE id = $1 AND source_channel NOT LIKE 'onliner:%'
 `, id).Scan(
 		&p.ID, &p.SourceChannel, &p.SourceMessageID, &p.SourceMessageLink, &p.Body,
 		&p.PosterUsername, &p.PosterPhone, &p.AdUsername, &p.AdPhone,
-		&p.DMContact, &p.DMContactType, &p.DMSentAt, &p.CreatedAt,
+		&p.DMContact, &p.DMContactType, &p.DMSentAt, &p.DMMessage, &p.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("not found")
@@ -38,7 +38,8 @@ WHERE id = $1 AND source_channel NOT LIKE 'onliner:%'
 	if status == "pending" {
 		_, err = db.sql.ExecContext(ctx, `
 UPDATE job_seeker_posts
-SET dm_contact = NULL, dm_contact_type = NULL, dm_sent_at = NULL
+SET dm_contact = NULL, dm_contact_type = NULL, dm_sent_at = NULL, dm_message = NULL,
+    dm_claimed_by = NULL, dm_claimed_at = NULL
 WHERE id = $1
 `, id)
 		if err != nil {
@@ -47,6 +48,7 @@ WHERE id = $1
 		p.DMContact = nil
 		p.DMContactType = nil
 		p.DMSentAt = nil
+		p.DMMessage = nil
 		return &p, nil
 	}
 

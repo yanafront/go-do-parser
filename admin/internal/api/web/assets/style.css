@@ -134,6 +134,17 @@ th, td {
 }
 th { color: #71767b; font-weight: 600; }
 .body-cell { min-width: 420px; max-width: 640px; white-space: pre-wrap; word-break: break-word; }
+.dm-message-cell {
+  min-width: 280px;
+  max-width: 420px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e7e9ea;
+  font-size: 13px;
+  line-height: 1.45;
+}
 .link-cell { min-width: 120px; max-width: 180px; word-break: break-all; }
 .link-cell a { text-decoration: none; }
 .link-cell a:hover { text-decoration: underline; }
