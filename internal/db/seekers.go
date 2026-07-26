@@ -2,7 +2,9 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -112,13 +114,90 @@ WHERE (dm_contact IS NULL OR dm_contact = '')
 func (db *DB) UpdateJobSeekerDM(ctx context.Context, sourceChannel string, messageID int, contact, contactType string, sentAt time.Time) error {
 	_, err := db.sql.ExecContext(ctx, `
 UPDATE job_seeker_posts
-SET dm_contact = $1, dm_contact_type = $2, dm_sent_at = $3
+SET dm_contact = $1, dm_contact_type = $2, dm_sent_at = $3,
+    dm_claimed_by = NULL, dm_claimed_at = NULL
 WHERE source_channel = $4 AND source_message_id = $5
 `,
 		contact, contactType, sentAt.UTC(), sourceChannel, messageID,
 	)
 	if err != nil {
 		return fmt.Errorf("update job seeker dm: %w", err)
+	}
+	return nil
+}
+
+func (db *DB) ClaimPendingSeekerDM(ctx context.Context, agentID string, staleAfter time.Duration) (*JobSeekerPost, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		agentID = "default"
+	}
+	if staleAfter <= 0 {
+		staleAfter = 15 * time.Minute
+	}
+
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin claim: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var p JobSeekerPost
+	err = tx.QueryRowContext(ctx, `
+WITH next AS (
+  SELECT source_channel, source_message_id
+  FROM job_seeker_posts
+  WHERE (dm_contact IS NULL OR dm_contact = '')
+    AND (
+      dm_claimed_at IS NULL
+      OR dm_claimed_at < $2
+    )
+  ORDER BY created_at ASC
+  LIMIT 1
+  FOR UPDATE SKIP LOCKED
+)
+UPDATE job_seeker_posts j
+SET dm_claimed_by = $1, dm_claimed_at = NOW()
+FROM next
+WHERE j.source_channel = next.source_channel
+  AND j.source_message_id = next.source_message_id
+RETURNING j.source_channel, j.source_message_id, COALESCE(j.source_message_link, ''), j.body,
+          COALESCE(j.poster_username, ''), COALESCE(j.poster_phone, ''),
+          COALESCE(j.ad_username, ''), COALESCE(j.ad_phone, '')
+`, agentID, time.Now().UTC().Add(-staleAfter)).Scan(
+		&p.SourceChannel,
+		&p.SourceMessageID,
+		&p.SourceMessageLink,
+		&p.Body,
+		&p.PosterUsername,
+		&p.PosterPhone,
+		&p.AdUsername,
+		&p.AdPhone,
+	)
+	if err == sql.ErrNoRows {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("claim pending seeker dm: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit claim: %w", err)
+	}
+	return &p, nil
+}
+
+func (db *DB) ReleaseSeekerDMClaim(ctx context.Context, sourceChannel string, messageID int, agentID string) error {
+	_, err := db.sql.ExecContext(ctx, `
+UPDATE job_seeker_posts
+SET dm_claimed_by = NULL, dm_claimed_at = NULL
+WHERE source_channel = $1 AND source_message_id = $2
+  AND (dm_contact IS NULL OR dm_contact = '')
+  AND ($3 = '' OR dm_claimed_by = $3)
+`, sourceChannel, messageID, strings.TrimSpace(agentID))
+	if err != nil {
+		return fmt.Errorf("release seeker dm claim: %w", err)
 	}
 	return nil
 }

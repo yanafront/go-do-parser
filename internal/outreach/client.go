@@ -23,6 +23,9 @@ type Service struct {
 	phone         string
 	dataDir       string
 	parserDataDir string
+	sessionB64    string
+	password      string
+	agentID       string
 	employerCfg   config.OutreachConfig
 	seekerCfg   config.SeekerConfig
 	apiID       int
@@ -87,6 +90,22 @@ func NewService(
 		sendCh:        make(chan sendJob, 16),
 		readyCh:       make(chan struct{}),
 	}
+}
+
+func (s *Service) SetAgent(agentID, sessionB64, password string) {
+	s.agentID = strings.TrimSpace(agentID)
+	s.sessionB64 = strings.TrimSpace(sessionB64)
+	s.password = strings.TrimSpace(password)
+	if s.log != nil && s.agentID != "" {
+		s.log = s.log.With(zap.String("agent", s.agentID))
+	}
+}
+
+func (s *Service) AgentID() string {
+	if strings.TrimSpace(s.agentID) == "" {
+		return "default"
+	}
+	return s.agentID
 }
 
 func (s *Service) Connect(ctx context.Context) error {
@@ -526,6 +545,14 @@ func randomID() (int64, error) {
 }
 
 func (s *Service) resolveSessionPath() (string, error) {
+	if strings.TrimSpace(s.sessionB64) != "" {
+		path, err := telegram.WriteSessionFile(s.dataDir, s.sessionB64)
+		if err != nil {
+			return "", err
+		}
+		s.log.Info("messenger session from agent config", zap.String("path", path))
+		return path, nil
+	}
 	sessionPath, err := telegram.PrepareOutreachSession(s.dataDir)
 	if err != nil {
 		return "", err
@@ -554,6 +581,9 @@ func (s *Service) resolveSessionPath() (string, error) {
 }
 
 func (s *Service) authPassword() string {
+	if v := strings.TrimSpace(s.password); v != "" {
+		return v
+	}
 	if v := strings.TrimSpace(os.Getenv("OUTREACH_AUTH_PASSWORD")); v != "" {
 		return v
 	}

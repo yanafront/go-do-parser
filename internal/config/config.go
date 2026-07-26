@@ -269,6 +269,36 @@ func (c *Config) applyEnv() {
 	if v := strings.TrimSpace(os.Getenv("SEEKER_ENABLED")); v == "true" || v == "1" || strings.EqualFold(v, "yes") {
 		c.Seeker.ExplicitlyEnabled = true
 	}
+	if HasConfiguredSeekerAgents() {
+		c.Seeker.ExplicitlyEnabled = false
+	}
+}
+
+func HasConfiguredSeekerAgents() bool {
+	for _, id := range splitComma(os.Getenv("SEEKER_AGENTS")) {
+		key := strings.ToUpper(strings.ReplaceAll(id, "-", "_"))
+		phone := firstNonEmptyEnv(
+			os.Getenv("SEEKER_AGENT_"+key+"_PHONE"),
+			os.Getenv("SEEKER_AGENT_"+id+"_PHONE"),
+		)
+		session := firstNonEmptyEnv(
+			os.Getenv("SEEKER_AGENT_"+key+"_SESSION"),
+			os.Getenv("SEEKER_AGENT_"+id+"_SESSION"),
+		)
+		if phone != "" && session != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func firstNonEmptyEnv(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 func (c *Config) setDefaults() {

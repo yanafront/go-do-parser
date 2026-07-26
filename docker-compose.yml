@@ -19,3 +19,13 @@ services:
       - ./data:/app/data
     env_file:
       - .env
+
+  seeker-worker:
+    build: .
+    container_name: go-do-seeker-worker
+    restart: unless-stopped
+    command: ["/app/seeker-worker"]
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env

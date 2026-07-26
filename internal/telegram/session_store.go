@@ -24,6 +24,28 @@ func PrepareOutreachSession(dataDir string) (sessionPath string, err error) {
 	return prepareSessionFromEnv(dataDir, "OUTREACH_SESSION", "session.json")
 }
 
+func WriteSessionFile(dataDir, sessionB64 string) (sessionPath string, err error) {
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return "", fmt.Errorf("create data dir: %w", err)
+	}
+	sessionPath = filepath.Join(dataDir, "session.json")
+	raw := normalizeBase64Env(sessionB64)
+	if raw == "" {
+		return "", fmt.Errorf("decode session: empty after cleanup")
+	}
+	data, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return "", fmt.Errorf("decode session: %w", err)
+	}
+	if len(data) < 2 || data[0] != '{' {
+		return "", fmt.Errorf("decode session: invalid session data")
+	}
+	if err := os.WriteFile(sessionPath, data, 0o600); err != nil {
+		return "", fmt.Errorf("write session: %w", err)
+	}
+	return sessionPath, nil
+}
+
 func prepareSessionFromEnv(dataDir, envKey, fileName string) (sessionPath string, err error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return "", fmt.Errorf("create data dir: %w", err)

@@ -193,6 +193,8 @@ CREATE TABLE IF NOT EXISTS job_seeker_posts (
 ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS source_message_link TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS source_message_link TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS poster_phone TEXT;
+ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_claimed_by TEXT;
+ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_claimed_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS onliner_posts (
     id BIGSERIAL PRIMARY KEY,

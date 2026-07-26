@@ -191,6 +191,10 @@ func New(cfg *config.Config, log *zap.Logger) (*App, error) {
 		)
 	}
 
+	if config.HasConfiguredSeekerAgents() {
+		log.Info("seeker agents configured: parser only queues posts, seeker-worker sends DMs")
+	}
+
 	return app, nil
 }
 

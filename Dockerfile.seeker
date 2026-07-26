@@ -8,17 +8,13 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /parser ./cmd/parser && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /onliner ./cmd/onliner && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /seeker-worker ./cmd/seeker-worker
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /seeker-worker ./cmd/seeker-worker
 
 FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
-COPY --from=builder /parser /app/parser
-COPY --from=builder /onliner /app/onliner
 COPY --from=builder /seeker-worker /app/seeker-worker
 
 RUN adduser -D -u 10001 appuser && \
@@ -32,4 +28,4 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-CMD ["/app/parser"]
+CMD ["/app/seeker-worker"]
