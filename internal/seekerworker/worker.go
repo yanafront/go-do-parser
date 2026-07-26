@@ -199,9 +199,24 @@ func (p *Pool) runAgent(ctx context.Context, agent AgentConfig) error {
 		log,
 	)
 	svc.SetAgent(agent.ID, agent.Session, agent.Password)
+	svc.SetAgentHooks(
+		func(agentID, phone, reason, target string, pausedUntil time.Time) {
+			if err := p.db.RecordSeekerAgentBlock(context.Background(), agentID, phone, reason, target, pausedUntil); err != nil {
+				log.Warn("record agent block failed", zap.Error(err))
+			}
+		},
+		func(agentID, phone string) {
+			if err := p.db.ClearSeekerAgentBlock(context.Background(), agentID, phone); err != nil {
+				log.Warn("clear agent block failed", zap.Error(err))
+			}
+		},
+	)
 
 	if until, ok := rateStore.PausedUntil(); ok {
 		log.Warn("seeker agent paused by Telegram", zap.Time("paused_until", until))
+		if err := p.db.SyncSeekerAgentPause(ctx, agent.ID, agent.Phone, "PEER_FLOOD", until); err != nil {
+			log.Warn("sync existing agent pause failed", zap.Error(err))
+		}
 	}
 
 	goErr := make(chan error, 1)

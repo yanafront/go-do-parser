@@ -108,9 +108,9 @@ SELECT id, source_channel, source_message_id, source_message_link, dest_message_
        published_at, created_at
 FROM vacancies
 %s
-ORDER BY created_at DESC, id DESC
+%s
 LIMIT $%d OFFSET $%d
-`, where, nextArg, nextArg+1)
+`, where, filter.OrderByDateCol("published_at", "id"), nextArg, nextArg+1)
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.sql.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {
@@ -161,9 +161,9 @@ SELECT id, source_channel, source_message_id, source_message_link, body,
        poster_username, poster_phone, ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, dm_message, created_at
 FROM job_seeker_posts
 %s
-ORDER BY created_at DESC, id DESC
+%s
 LIMIT $%d OFFSET $%d
-`, where, nextArg, nextArg+1)
+`, where, filter.OrderByCreated("id"), nextArg, nextArg+1)
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.sql.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {

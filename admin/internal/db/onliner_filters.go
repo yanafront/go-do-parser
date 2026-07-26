@@ -11,6 +11,7 @@ type OnlinerListFilter struct {
 	MessageStatus string
 	DateFrom      string
 	DateTo        string
+	SortDir       string
 }
 
 var onlinerSearchCols = []string{
@@ -94,4 +95,16 @@ func (f OnlinerListFilter) where(startArg int) (string, []any, int) {
 		where = "WHERE " + strings.Join(parts, " AND ")
 	}
 	return where, args, n
+}
+
+func (f OnlinerListFilter) SortAscending() bool {
+	return strings.EqualFold(strings.TrimSpace(f.SortDir), "asc")
+}
+
+func (f OnlinerListFilter) OrderByDate() string {
+	dir := "DESC"
+	if f.SortAscending() {
+		dir = "ASC"
+	}
+	return fmt.Sprintf("ORDER BY COALESCE(o.posted_at, o.parsed_at) %s, o.id %s", dir, dir)
 }

@@ -13,6 +13,7 @@ type ListFilter struct {
 	MessageStatus string
 	DateFrom      string
 	DateTo        string
+	SortDir       string
 }
 
 var vacancySearchCols = []string{
@@ -166,4 +167,26 @@ func normalizeSearch(s string) string {
 	s = strings.TrimPrefix(s, "https://t.me/")
 	s = strings.TrimPrefix(s, "t.me/")
 	return s
+}
+
+func (f ListFilter) SortAscending() bool {
+	return strings.EqualFold(strings.TrimSpace(f.SortDir), "asc")
+}
+
+func (f ListFilter) OrderByCreated(idCol string) string {
+	return f.OrderByDateCol("created_at", idCol)
+}
+
+func (f ListFilter) OrderByDateCol(dateCol, idCol string) string {
+	dir := "DESC"
+	if f.SortAscending() {
+		dir = "ASC"
+	}
+	if strings.TrimSpace(dateCol) == "" {
+		dateCol = "created_at"
+	}
+	if strings.TrimSpace(idCol) == "" {
+		idCol = "id"
+	}
+	return fmt.Sprintf("ORDER BY %s %s, %s %s", dateCol, dir, idCol, dir)
 }

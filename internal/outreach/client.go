@@ -40,6 +40,8 @@ type Service struct {
 	api           *tg.Client
 	sendCh        chan sendJob
 	readyCh       chan struct{}
+	onAgentBlock  func(agentID, phone, reason, target string, pausedUntil time.Time)
+	onAgentOK     func(agentID, phone string)
 }
 
 type sendJob struct {
@@ -106,6 +108,11 @@ func (s *Service) AgentID() string {
 		return "default"
 	}
 	return s.agentID
+}
+
+func (s *Service) SetAgentHooks(onBlock func(agentID, phone, reason, target string, pausedUntil time.Time), onOK func(agentID, phone string)) {
+	s.onAgentBlock = onBlock
+	s.onAgentOK = onOK
 }
 
 func (s *Service) Connect(ctx context.Context) error {
@@ -304,6 +311,9 @@ func (s *Service) HandleSeekerPost(ctx context.Context, post PostInfo) *Target {
 		zap.Duration("next_delay", nextDelay),
 	)
 	target.Message = message
+	if s.onAgentOK != nil {
+		s.onAgentOK(s.AgentID(), s.phone)
+	}
 	return &target
 }
 
@@ -357,21 +367,29 @@ func (s *Service) onSeekerSendFailed(target Target, post PostInfo, err error) bo
 		}
 		markedSkipped = true
 	case tgerr.Is(err, "PEER_FLOOD"):
+		until := time.Now().Add(24 * time.Hour)
 		s.log.Error("seeker paused: Telegram PEER_FLOOD, account restricted for cold DM",
 			zap.String("target", target.Raw),
 			zap.String("phone", telegram.MaskPhone(s.phone)),
 		)
 		if s.seekerRateStore != nil {
-			_ = s.seekerRateStore.PauseUntil(time.Now().Add(24 * time.Hour))
+			_ = s.seekerRateStore.PauseUntil(until)
+		}
+		if s.onAgentBlock != nil {
+			s.onAgentBlock(s.AgentID(), s.phone, "PEER_FLOOD", target.Raw, until)
 		}
 	default:
 		if wait, ok := tgerr.AsFloodWait(err); ok {
+			until := time.Now().Add(wait)
 			s.log.Warn("seeker flood wait",
 				zap.String("target", target.Raw),
 				zap.Duration("wait", wait),
 			)
 			if s.seekerRateStore != nil {
-				_ = s.seekerRateStore.PauseUntil(time.Now().Add(wait))
+				_ = s.seekerRateStore.PauseUntil(until)
+			}
+			if s.onAgentBlock != nil {
+				s.onAgentBlock(s.AgentID(), s.phone, "FLOOD_WAIT", target.Raw, until)
 			}
 		} else {
 			s.log.Warn("seeker send failed",

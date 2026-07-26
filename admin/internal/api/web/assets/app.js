@@ -4,6 +4,7 @@ const emptyFilters = () => ({
   message_status: '',
   date_from: '',
   date_to: '',
+  sort: 'desc',
 });
 
 const emptyOnlinerFilters = () => ({
@@ -12,6 +13,7 @@ const emptyOnlinerFilters = () => ({
   message_status: '',
   date_from: '',
   date_to: '',
+  sort: 'desc',
 });
 
 const state = {
@@ -251,6 +253,7 @@ function buildQuery() {
   }
   if (f.date_from) params.set('date_from', f.date_from);
   if (f.date_to) params.set('date_to', f.date_to);
+  params.set('sort', f.sort === 'asc' ? 'asc' : 'desc');
   return params.toString();
 }
 
@@ -322,6 +325,26 @@ function logout() {
   renderLogin();
 }
 
+function sortSelectHTML(sort) {
+  const dir = sort === 'asc' ? 'asc' : 'desc';
+  return `
+        <div class="field">
+          <label>Сортировка</label>
+          <select id="filter-sort">
+            <option value="desc" ${dir === 'desc' ? 'selected' : ''}>Сначала новые</option>
+            <option value="asc" ${dir === 'asc' ? 'selected' : ''}>Сначала старые</option>
+          </select>
+        </div>`;
+}
+
+function dateSortHeader(label) {
+  const f = currentFilters();
+  const dir = f.sort === 'asc' ? 'asc' : 'desc';
+  const arrow = dir === 'asc' ? '↑' : '↓';
+  const next = dir === 'asc' ? 'desc' : 'asc';
+  return `<button type="button" class="th-sort" data-sort="${next}" title="Сортировать по дате">${esc(label)} ${arrow}</button>`;
+}
+
 function filtersHTML() {
   const f = currentFilters();
   const messageFilter = `
@@ -335,7 +358,7 @@ function filtersHTML() {
   if (isOnlinerTab()) {
     return `
     <div class="filters">
-      <div class="filters-row">
+      <div class="filters-row filters-row-onliner">
         <div class="field field-grow">
           <label>Поиск</label>
           <input type="search" id="filter-q" value="${attrEsc(f.q)}" placeholder="Текст, автор, телефон, DM...">
@@ -357,6 +380,7 @@ function filtersHTML() {
           <label>По дату</label>
           <input type="date" id="filter-to" value="${attrEsc(f.date_to)}">
         </div>
+        ${sortSelectHTML(f.sort)}
       </div>
       <div class="filters-actions">
         <button class="primary compact" type="button" id="apply-filters">Применить</button>
@@ -374,7 +398,7 @@ function filtersHTML() {
 
   return `
     <div class="filters">
-      <div class="filters-row">
+      <div class="filters-row filters-row-main">
         <div class="field field-grow">
           <label>Поиск</label>
           <input type="search" id="filter-q" value="${attrEsc(f.q)}" placeholder="Текст, @username, телефон, DM...">
@@ -395,6 +419,7 @@ function filtersHTML() {
           <label>По дату</label>
           <input type="date" id="filter-to" value="${attrEsc(f.date_to)}">
         </div>
+        ${sortSelectHTML(f.sort)}
       </div>
       <div class="filters-actions">
         <button class="primary compact" type="button" id="apply-filters">Применить</button>
@@ -413,6 +438,7 @@ function readFiltersFromForm() {
       message_status: document.getElementById('filter-message')?.value || '',
       date_from: document.getElementById('filter-from')?.value || '',
       date_to: document.getElementById('filter-to')?.value || '',
+      sort: document.getElementById('filter-sort')?.value === 'asc' ? 'asc' : 'desc',
     };
     return;
   }
@@ -422,6 +448,7 @@ function readFiltersFromForm() {
     message_status: document.getElementById('filter-message')?.value || '',
     date_from: document.getElementById('filter-from')?.value || '',
     date_to: document.getElementById('filter-to')?.value || '',
+    sort: document.getElementById('filter-sort')?.value === 'asc' ? 'asc' : 'desc',
   };
 }
 
@@ -453,10 +480,18 @@ function bindFilters() {
       await applyFilters();
     }
   });
-  ['filter-channel', 'filter-message', 'filter-from', 'filter-to'].forEach((id) => {
+  ['filter-channel', 'filter-message', 'filter-from', 'filter-to', 'filter-sort'].forEach((id) => {
     document.getElementById(id)?.addEventListener('change', () => applyFilters());
   });
   document.getElementById('filter-contact')?.addEventListener('change', () => applyFilters());
+  document.querySelectorAll('.th-sort').forEach((btn) => {
+    btn.onclick = async () => {
+      const next = btn.dataset.sort === 'asc' ? 'asc' : 'desc';
+      currentFilters().sort = next;
+      setCurrentOffset(0);
+      await reloadTable();
+    };
+  });
 }
 
 async function loadChannels() {
@@ -478,6 +513,7 @@ async function renderApp() {
         <button class="ghost" type="button" id="logout">Выйти</button>
       </div>
       <div class="stats" id="stats"></div>
+      <div id="agent-status"></div>
       <div class="tabs">
         <button class="tab ${state.tab === 'vacancies' ? 'active' : ''}" type="button" data-tab="vacancies">Вакансии</button>
         <button class="tab ${state.tab === 'seekers' ? 'active' : ''}" type="button" data-tab="seekers">Соискатели TG</button>
@@ -501,9 +537,89 @@ async function renderApp() {
       <div class="stat"><div class="num">${stats.onliner || 0}</div><div class="label">Onliner</div></div>
       <div class="stat"><div class="num">${stats.dm_sent}</div><div class="label">Отправлено DM</div></div>
     `;
+    await renderAgentStatus();
     await reloadTable();
   } catch {
     logout();
+  }
+}
+
+function maskPhone(phone) {
+  const p = String(phone || '').trim();
+  if (p.length < 6) return p || '—';
+  return p.slice(0, 4) + '******' + p.slice(-3);
+}
+
+function agentStatusLabel(status) {
+  return status === 'blocked' ? 'Заблокирован' : 'OK';
+}
+
+function formatAgentTarget(target) {
+  const t = String(target || '').trim();
+  if (!t) return '—';
+  if (t.startsWith('+') || /^\d/.test(t)) return esc(t);
+  return formatContact(t, '') || esc(t);
+}
+
+async function renderAgentStatus() {
+  const box = document.getElementById('agent-status');
+  if (!box) return;
+  try {
+    const data = await api('/api/seeker-agents');
+    const agents = data.agents || [];
+    const blocks = data.blocks || [];
+    if (!agents.length && !blocks.length) {
+      box.innerHTML = '';
+      return;
+    }
+    const agentCards = agents.map((a) => {
+      const blocked = a.status === 'blocked';
+      return `
+        <div class="agent-card ${blocked ? 'is-blocked' : 'is-ok'}">
+          <div class="agent-title">
+            <strong>${esc(a.agent_id)}</strong>
+            <span class="badge ${blocked ? 'badge-skipped' : 'badge-sent'}">${agentStatusLabel(a.status)}</span>
+          </div>
+          <div class="agent-meta">${esc(maskPhone(a.phone))}</div>
+          ${blocked ? `
+            <div class="agent-meta">Причина: ${esc(a.reason || 'PEER_FLOOD')}</div>
+            <div class="agent-meta">На контакте: ${formatAgentTarget(a.last_target)}</div>
+            <div class="agent-meta">До: ${fmtDate(a.paused_until)}</div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+    const blockRows = blocks.slice(0, 10).map((b) => `
+      <tr>
+        <td>${fmtDate(b.created_at)}</td>
+        <td>${esc(b.agent_id)}</td>
+        <td>${esc(maskPhone(b.phone))}</td>
+        <td>${esc(b.reason)}</td>
+        <td>${formatAgentTarget(b.target)}</td>
+        <td>${fmtDate(b.paused_until)}</td>
+      </tr>
+    `).join('');
+    box.innerHTML = `
+      <div class="card agents-card">
+        <h2>Агенты DM</h2>
+        <div class="agents-grid">${agentCards || '<div class="muted">Пока нет данных по агентам</div>'}</div>
+        ${blocks.length ? `
+          <h3>Последние блоки</h3>
+          <div class="table-wrap">
+            <table class="agents-blocks-table">
+              <thead>
+                <tr>
+                  <th>Когда</th><th>Агент</th><th>Телефон</th><th>Причина</th><th>Контакт</th><th>Пауза до</th>
+                </tr>
+              </thead>
+              <tbody>${blockRows}</tbody>
+            </table>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } catch {
+    box.innerHTML = '';
   }
 }
 
@@ -564,7 +680,7 @@ async function renderVacancies() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>Отправлено</th><th>Публикация</th><th>Текст</th>
+          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>Отправлено</th><th>${dateSortHeader('Публикация')}</th><th>Текст</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="8">Ничего не найдено</td></tr>'}</tbody>
@@ -600,7 +716,7 @@ async function renderOnliner() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Дата</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Контакты</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Заголовок</th><th>Текст</th>
+          <th>ID</th><th>${dateSortHeader('Дата')}</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Контакты</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Заголовок</th><th>Текст</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>
@@ -637,7 +753,7 @@ async function renderSeekers() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Дата</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Сообщение</th><th>Текст</th>
+          <th>ID</th><th>${dateSortHeader('Дата')}</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Сообщение</th><th>Текст</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>

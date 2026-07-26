@@ -197,6 +197,27 @@ ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_claimed_by TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_claimed_at TIMESTAMPTZ;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_message TEXT;
 
+CREATE TABLE IF NOT EXISTS seeker_agent_status (
+    agent_id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'ok',
+    reason TEXT NOT NULL DEFAULT '',
+    last_target TEXT NOT NULL DEFAULT '',
+    paused_until TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS seeker_agent_blocks (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    phone TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL,
+    target TEXT NOT NULL DEFAULT '',
+    paused_until TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS seeker_agent_blocks_created_idx ON seeker_agent_blocks (created_at DESC);
+
 CREATE TABLE IF NOT EXISTS onliner_posts (
     id BIGSERIAL PRIMARY KEY,
     topic_id INTEGER NOT NULL UNIQUE,

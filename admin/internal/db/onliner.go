@@ -28,9 +28,9 @@ SELECT o.id, o.topic_id, o.topic_url, o.title, o.body,
        j.dm_contact, j.dm_contact_type, j.dm_sent_at
 %s
 %s
-ORDER BY COALESCE(o.posted_at, o.parsed_at) DESC, o.id DESC
+%s
 LIMIT $%d OFFSET $%d
-`, from, where, nextArg, nextArg+1)
+`, from, where, filter.OrderByDate(), nextArg, nextArg+1)
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.sql.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {

@@ -30,6 +30,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.Handle("GET /api/stats", s.authRequired(http.HandlerFunc(s.handleStats)))
+	mux.Handle("GET /api/seeker-agents", s.authRequired(http.HandlerFunc(s.handleSeekerAgents)))
 	mux.Handle("GET /api/channels", s.authRequired(http.HandlerFunc(s.handleChannels)))
 	mux.Handle("GET /api/vacancies", s.authRequired(http.HandlerFunc(s.handleVacancies)))
 	mux.Handle("GET /api/job-seekers", s.authRequired(http.HandlerFunc(s.handleJobSeekers)))
@@ -79,6 +80,29 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
+}
+
+func (s *Server) handleSeekerAgents(w http.ResponseWriter, r *http.Request) {
+	statuses, err := s.db.ListSeekerAgentStatuses(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	blocks, err := s.db.ListSeekerAgentBlocks(r.Context(), 20)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	if statuses == nil {
+		statuses = []db.SeekerAgentStatus{}
+	}
+	if blocks == nil {
+		blocks = []db.SeekerAgentBlock{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"agents": statuses,
+		"blocks": blocks,
+	})
 }
 
 func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +158,7 @@ func onlinerFilterParams(r *http.Request) db.OnlinerListFilter {
 		MessageStatus: strings.TrimSpace(q.Get("message_status")),
 		DateFrom:      strings.TrimSpace(q.Get("date_from")),
 		DateTo:        strings.TrimSpace(q.Get("date_to")),
+		SortDir:       strings.TrimSpace(q.Get("sort")),
 	}
 }
 
@@ -259,6 +284,7 @@ func listFilterParams(r *http.Request) db.ListFilter {
 		MessageStatus: strings.TrimSpace(q.Get("message_status")),
 		DateFrom:      strings.TrimSpace(q.Get("date_from")),
 		DateTo:        strings.TrimSpace(q.Get("date_to")),
+		SortDir:       strings.TrimSpace(q.Get("sort")),
 	}
 }
 
