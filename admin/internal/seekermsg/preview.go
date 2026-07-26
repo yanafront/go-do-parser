@@ -11,7 +11,13 @@ const (
 	sourceNamePlaceholder = "{{source_name}}"
 )
 
-var exampleTemplate = `Добрый день! Увидели ваше объявление в {{source_name}}. Если ищете работу — заходите к нам: <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Podrabotki.by</a>`
+var exampleTemplate = `Здравствуйте!
+
+Увидели ваше объявление в {{source_name}} и подумали, что вам может быть полезно.
+
+На <a href="https://podrabotki.by/?utm_source=telegram_dm&utm_medium=message&utm_campaign=seeker_invite">Podrabotki.by</a> собраны подработки и смены в одном месте — можно быстро посмотреть варианты и сразу написать работодателю.
+
+Если сейчас не в поиске — просто проигнорируйте сообщение, без обид 🙂`
 
 func Preview(sourceChannel, sourceLink string, messageID int) string {
 	link := formatSourceLink(sourceChannel, sourceLink, messageID)
