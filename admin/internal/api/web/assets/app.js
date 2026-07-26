@@ -4,6 +4,7 @@ const emptyFilters = () => ({
   message_status: '',
   date_from: '',
   date_to: '',
+  sort_by: 'date',
   sort: 'desc',
 });
 
@@ -13,6 +14,7 @@ const emptyOnlinerFilters = () => ({
   message_status: '',
   date_from: '',
   date_to: '',
+  sort_by: 'date',
   sort: 'desc',
 });
 
@@ -253,6 +255,7 @@ function buildQuery() {
   }
   if (f.date_from) params.set('date_from', f.date_from);
   if (f.date_to) params.set('date_to', f.date_to);
+  params.set('sort_by', f.sort_by === 'sent' ? 'sent' : 'date');
   params.set('sort', f.sort === 'asc' ? 'asc' : 'desc');
   return params.toString();
 }
@@ -325,11 +328,19 @@ function logout() {
   renderLogin();
 }
 
-function sortSelectHTML(sort) {
-  const dir = sort === 'asc' ? 'asc' : 'desc';
+function sortSelectHTML(f) {
+  const by = f.sort_by === 'sent' ? 'sent' : 'date';
+  const dir = f.sort === 'asc' ? 'asc' : 'desc';
   return `
         <div class="field">
           <label>Сортировка</label>
+          <select id="filter-sort-by">
+            <option value="date" ${by === 'date' ? 'selected' : ''}>По дате</option>
+            <option value="sent" ${by === 'sent' ? 'selected' : ''}>По отправлено</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Порядок</label>
           <select id="filter-sort">
             <option value="desc" ${dir === 'desc' ? 'selected' : ''}>Сначала новые</option>
             <option value="asc" ${dir === 'asc' ? 'selected' : ''}>Сначала старые</option>
@@ -337,12 +348,14 @@ function sortSelectHTML(sort) {
         </div>`;
 }
 
-function dateSortHeader(label) {
+function dateSortHeader(label, field) {
   const f = currentFilters();
+  const by = field === 'sent' ? 'sent' : 'date';
+  const active = (f.sort_by === 'sent' ? 'sent' : 'date') === by;
   const dir = f.sort === 'asc' ? 'asc' : 'desc';
-  const arrow = dir === 'asc' ? '↑' : '↓';
-  const next = dir === 'asc' ? 'desc' : 'asc';
-  return `<button type="button" class="th-sort" data-sort="${next}" title="Сортировать по дате">${esc(label)} ${arrow}</button>`;
+  const arrow = active ? (dir === 'asc' ? '↑' : '↓') : '';
+  const nextDir = active && dir === 'desc' ? 'asc' : 'desc';
+  return `<button type="button" class="th-sort" data-sort-by="${by}" data-sort="${nextDir}" title="Сортировать">${esc(label)}${arrow ? ` ${arrow}` : ''}</button>`;
 }
 
 function filtersHTML() {
@@ -380,7 +393,7 @@ function filtersHTML() {
           <label>По дату</label>
           <input type="date" id="filter-to" value="${attrEsc(f.date_to)}">
         </div>
-        ${sortSelectHTML(f.sort)}
+        ${sortSelectHTML(f)}
       </div>
       <div class="filters-actions">
         <button class="primary compact" type="button" id="apply-filters">Применить</button>
@@ -419,7 +432,7 @@ function filtersHTML() {
           <label>По дату</label>
           <input type="date" id="filter-to" value="${attrEsc(f.date_to)}">
         </div>
-        ${sortSelectHTML(f.sort)}
+        ${sortSelectHTML(f)}
       </div>
       <div class="filters-actions">
         <button class="primary compact" type="button" id="apply-filters">Применить</button>
@@ -438,6 +451,7 @@ function readFiltersFromForm() {
       message_status: document.getElementById('filter-message')?.value || '',
       date_from: document.getElementById('filter-from')?.value || '',
       date_to: document.getElementById('filter-to')?.value || '',
+      sort_by: document.getElementById('filter-sort-by')?.value === 'sent' ? 'sent' : 'date',
       sort: document.getElementById('filter-sort')?.value === 'asc' ? 'asc' : 'desc',
     };
     return;
@@ -448,6 +462,7 @@ function readFiltersFromForm() {
     message_status: document.getElementById('filter-message')?.value || '',
     date_from: document.getElementById('filter-from')?.value || '',
     date_to: document.getElementById('filter-to')?.value || '',
+    sort_by: document.getElementById('filter-sort-by')?.value === 'sent' ? 'sent' : 'date',
     sort: document.getElementById('filter-sort')?.value === 'asc' ? 'asc' : 'desc',
   };
 }
@@ -480,14 +495,17 @@ function bindFilters() {
       await applyFilters();
     }
   });
-  ['filter-channel', 'filter-message', 'filter-from', 'filter-to', 'filter-sort'].forEach((id) => {
+  ['filter-channel', 'filter-message', 'filter-from', 'filter-to', 'filter-sort', 'filter-sort-by'].forEach((id) => {
     document.getElementById(id)?.addEventListener('change', () => applyFilters());
   });
   document.getElementById('filter-contact')?.addEventListener('change', () => applyFilters());
   document.querySelectorAll('.th-sort').forEach((btn) => {
     btn.onclick = async () => {
+      const by = btn.dataset.sortBy === 'sent' ? 'sent' : 'date';
       const next = btn.dataset.sort === 'asc' ? 'asc' : 'desc';
-      currentFilters().sort = next;
+      const f = currentFilters();
+      f.sort_by = by;
+      f.sort = next;
       setCurrentOffset(0);
       await reloadTable();
     };
@@ -680,7 +698,7 @@ async function renderVacancies() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>Отправлено</th><th>${dateSortHeader('Публикация')}</th><th>Текст</th>
+          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>${dateSortHeader('Публикация', 'date')}</th><th>Текст</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="8">Ничего не найдено</td></tr>'}</tbody>
@@ -716,7 +734,7 @@ async function renderOnliner() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>${dateSortHeader('Дата')}</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Контакты</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Заголовок</th><th>Текст</th>
+          <th>ID</th><th>${dateSortHeader('Дата', 'date')}</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Контакты</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Заголовок</th><th>Текст</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>
@@ -753,7 +771,7 @@ async function renderSeekers() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>${dateSortHeader('Дата')}</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>Отправлено</th><th>Сообщение</th><th>Текст</th>
+          <th>ID</th><th>${dateSortHeader('Дата', 'date')}</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Сообщение</th><th>Текст</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>

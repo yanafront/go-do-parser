@@ -158,6 +158,7 @@ func onlinerFilterParams(r *http.Request) db.OnlinerListFilter {
 		MessageStatus: strings.TrimSpace(q.Get("message_status")),
 		DateFrom:      strings.TrimSpace(q.Get("date_from")),
 		DateTo:        strings.TrimSpace(q.Get("date_to")),
+		SortBy:        strings.TrimSpace(q.Get("sort_by")),
 		SortDir:       strings.TrimSpace(q.Get("sort")),
 	}
 }
@@ -284,6 +285,7 @@ func listFilterParams(r *http.Request) db.ListFilter {
 		MessageStatus: strings.TrimSpace(q.Get("message_status")),
 		DateFrom:      strings.TrimSpace(q.Get("date_from")),
 		DateTo:        strings.TrimSpace(q.Get("date_to")),
+		SortBy:        strings.TrimSpace(q.Get("sort_by")),
 		SortDir:       strings.TrimSpace(q.Get("sort")),
 	}
 }

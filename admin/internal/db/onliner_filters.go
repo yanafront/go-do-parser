@@ -11,6 +11,7 @@ type OnlinerListFilter struct {
 	MessageStatus string
 	DateFrom      string
 	DateTo        string
+	SortBy        string
 	SortDir       string
 }
 
@@ -103,8 +104,14 @@ func (f OnlinerListFilter) SortAscending() bool {
 
 func (f OnlinerListFilter) OrderByDate() string {
 	dir := "DESC"
+	nulls := "NULLS LAST"
 	if f.SortAscending() {
 		dir = "ASC"
+		nulls = "NULLS FIRST"
+	}
+	by := strings.ToLower(strings.TrimSpace(f.SortBy))
+	if by == "sent" || by == "dm_sent_at" {
+		return fmt.Sprintf("ORDER BY j.dm_sent_at %s %s, o.id %s", dir, nulls, dir)
 	}
 	return fmt.Sprintf("ORDER BY COALESCE(o.posted_at, o.parsed_at) %s, o.id %s", dir, dir)
 }

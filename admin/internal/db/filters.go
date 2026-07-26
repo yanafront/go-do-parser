@@ -13,6 +13,7 @@ type ListFilter struct {
 	MessageStatus string
 	DateFrom      string
 	DateTo        string
+	SortBy        string
 	SortDir       string
 }
 
@@ -173,20 +174,53 @@ func (f ListFilter) SortAscending() bool {
 	return strings.EqualFold(strings.TrimSpace(f.SortDir), "asc")
 }
 
+func (f ListFilter) sortBySent() bool {
+	v := strings.ToLower(strings.TrimSpace(f.SortBy))
+	return v == "sent" || v == "dm_sent_at" || v == "отправлено"
+}
+
 func (f ListFilter) OrderByCreated(idCol string) string {
-	return f.OrderByDateCol("created_at", idCol)
+	return f.OrderBy(map[string]string{
+		"date": "created_at",
+		"sent": "dm_sent_at",
+	}, idCol)
+}
+
+func (f ListFilter) OrderByPublished(idCol string) string {
+	return f.OrderBy(map[string]string{
+		"date": "published_at",
+		"sent": "dm_sent_at",
+	}, idCol)
 }
 
 func (f ListFilter) OrderByDateCol(dateCol, idCol string) string {
+	return f.OrderBy(map[string]string{
+		"date": dateCol,
+		"sent": "dm_sent_at",
+	}, idCol)
+}
+
+func (f ListFilter) OrderBy(cols map[string]string, idCol string) string {
 	dir := "DESC"
+	nulls := "NULLS LAST"
 	if f.SortAscending() {
 		dir = "ASC"
-	}
-	if strings.TrimSpace(dateCol) == "" {
-		dateCol = "created_at"
+		nulls = "NULLS FIRST"
 	}
 	if strings.TrimSpace(idCol) == "" {
 		idCol = "id"
 	}
-	return fmt.Sprintf("ORDER BY %s %s, %s %s", dateCol, dir, idCol, dir)
+	dateCol := cols["date"]
+	if strings.TrimSpace(dateCol) == "" {
+		dateCol = "created_at"
+	}
+	sentCol := cols["sent"]
+	if strings.TrimSpace(sentCol) == "" {
+		sentCol = "dm_sent_at"
+	}
+	col := dateCol
+	if f.sortBySent() {
+		col = sentCol
+	}
+	return fmt.Sprintf("ORDER BY %s %s %s, %s %s", col, dir, nulls, idCol, dir)
 }

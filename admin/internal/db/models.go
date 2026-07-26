@@ -110,7 +110,7 @@ FROM vacancies
 %s
 %s
 LIMIT $%d OFFSET $%d
-`, where, filter.OrderByDateCol("published_at", "id"), nextArg, nextArg+1)
+`, where, filter.OrderByPublished("id"), nextArg, nextArg+1)
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.sql.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {
