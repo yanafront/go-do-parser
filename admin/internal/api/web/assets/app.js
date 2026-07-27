@@ -198,6 +198,15 @@ function formatSeekerContactCell(row) {
   return formatContact(t.contact, '') || esc(t.contact);
 }
 
+function formatVacancyContactCell(row) {
+  const t = pickMessageTarget(row, 'vacancy');
+  if (!t.contact) return '—';
+  if (t.type === 'phone' || t.contact.startsWith('+') || /^\d/.test(t.contact)) {
+    return esc(t.contact);
+  }
+  return formatContact(t.contact, '') || esc(t.contact);
+}
+
 function formatOnlinerContactCell(row) {
   const t = pickMessageTarget(row, 'onliner');
   if (!t.contact) return '—';
@@ -734,14 +743,16 @@ async function renderVacancies() {
   const data = await api(`/api/vacancies?${buildQuery()}`);
   syncPaging(data);
   const rows = (data.items || []).map((v) => `
-    <tr>
+    <tr data-vacancy-id="${v.id}">
       <td data-label="ID">${v.id}</td>
       <td data-label="Название">${formatChannelTitle(v)}</td>
       <td data-label="Канал">${formatChannelUsername(v)}</td>
       <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
       <td data-label="Контакт в объявлении">${formatContact(v.ad_username, v.ad_phone) || '—'}</td>
-      <td data-label="Кому пишем">${formatMessageCell(v, 'vacancy')}</td>
-      <td data-label="DM когда">${fmtDate(v.dm_sent_at)}</td>
+      <td data-label="Кому пишем" class="vacancy-contact-cell">${formatVacancyContactCell(v)}</td>
+      <td data-label="Статус">${dmStatusRadios(v, 'vacancy')}</td>
+      <td data-label="Отправлено" class="vacancy-sent-cell">${fmtDate(v.dm_sent_at)}</td>
+      <td data-label="Кто менял" class="vacancy-changed-cell">${formatChangedBy(v)}</td>
       <td data-label="Опубликовано">${fmtDate(v.published_at)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
     </tr>
@@ -752,16 +763,17 @@ async function renderVacancies() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Название</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>${dateSortHeader('Публикация', 'date')}</th><th>Текст</th>
+          <th>ID</th><th>Название</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Кто менял</th><th>${dateSortHeader('Публикация', 'date')}</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="9">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}
   `;
   bindFilters();
   bindPager();
+  bindDmStatus();
 }
 
 async function renderOnliner() {
@@ -857,7 +869,9 @@ function bindDmStatus() {
 
         const path = kind === 'onliner'
           ? `/api/onliner-posts/${id}/dm`
-          : `/api/job-seekers/${id}/dm`;
+          : kind === 'vacancy'
+            ? `/api/vacancies/${id}/dm`
+            : `/api/job-seekers/${id}/dm`;
 
         try {
           const item = await api(path, {
@@ -867,13 +881,28 @@ function bindDmStatus() {
           group.dataset.prev = status;
           const row = group.closest('tr');
           if (row) {
-            const contactCell = row.querySelector(kind === 'onliner' ? '.onliner-contact-cell' : '.seeker-contact-cell');
-            const sentCell = row.querySelector(kind === 'onliner' ? '.onliner-sent-cell' : '.seeker-sent-cell');
-            const changedCell = row.querySelector(kind === 'onliner' ? '.onliner-changed-cell' : '.seeker-changed-cell');
+            const contactSel = kind === 'onliner'
+              ? '.onliner-contact-cell'
+              : kind === 'vacancy'
+                ? '.vacancy-contact-cell'
+                : '.seeker-contact-cell';
+            const sentSel = kind === 'onliner'
+              ? '.onliner-sent-cell'
+              : kind === 'vacancy'
+                ? '.vacancy-sent-cell'
+                : '.seeker-sent-cell';
+            const changedSel = kind === 'onliner'
+              ? '.onliner-changed-cell'
+              : kind === 'vacancy'
+                ? '.vacancy-changed-cell'
+                : '.seeker-changed-cell';
+            const contactCell = row.querySelector(contactSel);
+            const sentCell = row.querySelector(sentSel);
+            const changedCell = row.querySelector(changedSel);
             if (contactCell) {
-              contactCell.innerHTML = kind === 'onliner'
-                ? formatOnlinerContactCell(item)
-                : formatSeekerContactCell(item);
+              if (kind === 'onliner') contactCell.innerHTML = formatOnlinerContactCell(item);
+              else if (kind === 'vacancy') contactCell.innerHTML = formatVacancyContactCell(item);
+              else contactCell.innerHTML = formatSeekerContactCell(item);
             }
             if (sentCell) sentCell.textContent = fmtDate(item.dm_sent_at);
             if (changedCell) changedCell.innerHTML = formatChangedBy(item);

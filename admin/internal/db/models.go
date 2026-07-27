@@ -16,11 +16,12 @@ type Vacancy struct {
 	Body               string     `json:"body"`
 	AdUsername         *string    `json:"ad_username,omitempty"`
 	AdPhone            *string    `json:"ad_phone,omitempty"`
-	DMContact          *string    `json:"dm_contact,omitempty"`
-	DMContactType      *string    `json:"dm_contact_type,omitempty"`
-	DMSentAt           *time.Time `json:"dm_sent_at,omitempty"`
-	PublishedAt        time.Time  `json:"published_at"`
-	CreatedAt          time.Time  `json:"created_at"`
+	DMContact         *string    `json:"dm_contact,omitempty"`
+	DMContactType     *string    `json:"dm_contact_type,omitempty"`
+	DMSentAt          *time.Time `json:"dm_sent_at,omitempty"`
+	DMStatusChangedBy *string    `json:"dm_status_changed_by,omitempty"`
+	PublishedAt       time.Time  `json:"published_at"`
+	CreatedAt         time.Time  `json:"created_at"`
 }
 
 type JobSeekerPost struct {
@@ -110,7 +111,7 @@ func (db *DB) ListVacancies(ctx context.Context, filter ListFilter, limit, offse
 SELECT vacancies.id, vacancies.source_channel, COALESCE(c.title, ''),
        vacancies.source_message_id, vacancies.source_message_link, vacancies.dest_message_id, vacancies.body,
        vacancies.ad_username, vacancies.ad_phone, vacancies.dm_contact, vacancies.dm_contact_type, vacancies.dm_sent_at,
-       vacancies.published_at, vacancies.created_at
+       vacancies.dm_status_changed_by, vacancies.published_at, vacancies.created_at
 FROM vacancies
 LEFT JOIN channels c ON c.username = LOWER(vacancies.source_channel)
 %s
@@ -130,7 +131,7 @@ LIMIT $%d OFFSET $%d
 		if err := rows.Scan(
 			&v.ID, &v.SourceChannel, &v.SourceChannelTitle, &v.SourceMessageID, &v.SourceMessageLink, &v.DestMessageID, &v.Body,
 			&v.AdUsername, &v.AdPhone, &v.DMContact, &v.DMContactType, &v.DMSentAt,
-			&v.PublishedAt, &v.CreatedAt,
+			&v.DMStatusChangedBy, &v.PublishedAt, &v.CreatedAt,
 		); err != nil {
 			return nil, 0, err
 		}

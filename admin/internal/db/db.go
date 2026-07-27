@@ -105,6 +105,7 @@ func (db *DB) Close() error {
 func (db *DB) ensureSchema(ctx context.Context) error {
 	_, err := db.sql.ExecContext(ctx, `
 ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS source_message_link TEXT;
+ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS dm_status_changed_by TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS source_message_link TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS poster_phone TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_claimed_by TEXT;
