@@ -23,7 +23,7 @@ func main() {
 	}
 	defer database.Close()
 
-	authService := auth.New(cfg.AdminPassword, cfg.JWTSecret)
+	authService := auth.New(cfg.AdminPassword, cfg.JWTSecret, cfg.AdminUsers)
 
 	server := api.New(database, authService)
 	httpServer := &http.Server{

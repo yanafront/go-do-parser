@@ -12,6 +12,7 @@ type Config struct {
 	DatabaseURL   string
 	AdminPassword string
 	JWTSecret     string
+	AdminUsers    []string
 }
 
 func Load() (Config, error) {
@@ -20,6 +21,7 @@ func Load() (Config, error) {
 		DatabaseURL:   resolveDatabaseURL(),
 		AdminPassword: strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")),
 		JWTSecret:     strings.TrimSpace(os.Getenv("ADMIN_JWT_SECRET")),
+		AdminUsers:    parseUsers(os.Getenv("ADMIN_USERS")),
 	}
 	if cfg.DatabaseURL == "" {
 		return cfg, fmt.Errorf("DATABASE_URL is required")
@@ -31,6 +33,22 @@ func Load() (Config, error) {
 		return cfg, fmt.Errorf("ADMIN_JWT_SECRET is required")
 	}
 	return cfg, nil
+}
+
+func parseUsers(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(strings.TrimPrefix(p, "@"))
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func envOr(key, fallback string) string {

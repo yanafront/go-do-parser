@@ -25,7 +25,7 @@ func (db *DB) ListOnlinerPosts(ctx context.Context, filter OnlinerListFilter, li
 SELECT o.id, o.topic_id, o.topic_url, o.title, o.body,
        o.poster_user_id, o.poster_username, o.poster_profile_url,
        o.phone, o.email, o.telegram, o.created_at, o.parsed_at, o.posted_at,
-       j.dm_contact, j.dm_contact_type, j.dm_sent_at
+       j.dm_contact, j.dm_contact_type, j.dm_sent_at, j.dm_status_changed_by
 %s
 %s
 %s
@@ -45,7 +45,7 @@ LIMIT $%d OFFSET $%d
 			&p.ID, &p.TopicID, &p.TopicURL, &p.Title, &p.Body,
 			&p.PosterUserID, &p.PosterUsername, &p.PosterProfileURL,
 			&p.Phone, &p.Email, &p.Telegram, &p.CreatedAt, &p.ParsedAt, &p.PostedAt,
-			&p.DMContact, &p.DMContactType, &p.DMSentAt,
+			&p.DMContact, &p.DMContactType, &p.DMSentAt, &p.DMStatusChangedBy,
 		); err != nil {
 			return nil, 0, err
 		}

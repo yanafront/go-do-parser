@@ -20,6 +20,7 @@ const emptyOnlinerFilters = () => ({
 
 const state = {
   token: localStorage.getItem('admin_token') || '',
+  nickname: localStorage.getItem('admin_nickname') || '',
   tab: 'vacancies',
   limit: 50,
   offsets: {
@@ -287,6 +288,12 @@ async function api(path, options = {}) {
   return data;
 }
 
+function formatChangedBy(row) {
+  const nick = row.dm_status_changed_by ? String(row.dm_status_changed_by).trim() : '';
+  if (!nick) return '—';
+  return `@${esc(nick)}`;
+}
+
 function renderLogin(error = '') {
   app.innerHTML = `
     <div class="login-wrap">
@@ -295,6 +302,8 @@ function renderLogin(error = '') {
         <div class="sub">Вход в панель управления</div>
         <div class="error">${esc(error)}</div>
         <form id="login-form">
+          <label>Telegram ник</label>
+          <input type="text" id="nickname" autocomplete="username" placeholder="@username" required>
           <label>Пароль</label>
           <input type="password" id="password" autocomplete="current-password" required>
           <button class="primary" type="submit">Войти</button>
@@ -302,22 +311,32 @@ function renderLogin(error = '') {
       </div>
     </div>
   `;
+  const nickInput = document.getElementById('nickname');
+  if (state.nickname) nickInput.value = state.nickname;
   document.getElementById('login-form').onsubmit = async (e) => {
     e.preventDefault();
     try {
+      const nickname = document.getElementById('nickname').value;
       const password = document.getElementById('password').value;
       const data = await api('/api/login', {
         method: 'POST',
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ nickname, password }),
       });
       state.token = data.token;
+      state.nickname = data.nickname || nickname.replace(/^@/, '').toLowerCase();
       localStorage.setItem('admin_token', state.token);
+      localStorage.setItem('admin_nickname', state.nickname);
       state.offsets.vacancies = 0;
       state.offsets.seekers = 0;
       state.offsets.onliner = 0;
       await renderApp();
     } catch (err) {
-      renderLogin(err.message === 'invalid password' ? 'Неверный пароль' : 'Ошибка входа');
+      const msg = err.message === 'invalid credentials' || err.message === 'invalid password'
+        ? 'Неверный ник или пароль'
+        : err.message === 'nickname required'
+          ? 'Укажите Telegram ник'
+          : 'Ошибка входа';
+      renderLogin(msg);
     }
   };
 }
@@ -521,6 +540,7 @@ async function loadChannels() {
 }
 
 async function renderApp() {
+  const who = state.nickname ? `@${esc(state.nickname)}` : '';
   app.innerHTML = `
     <div class="container">
       <div class="topbar">
@@ -528,7 +548,10 @@ async function renderApp() {
           <h1>Podrabotki Admin</h1>
           <div class="sub">Вакансии и соискатели из Telegram и Onliner</div>
         </div>
-        <button class="ghost" type="button" id="logout">Выйти</button>
+        <div class="topbar-actions">
+          ${who ? `<span class="user-chip">${who}</span>` : ''}
+          <button class="ghost" type="button" id="logout">Выйти</button>
+        </div>
       </div>
       <div class="stats" id="stats"></div>
       <div id="agent-status"></div>
@@ -724,6 +747,7 @@ async function renderOnliner() {
       <td data-label="Кому пишем" class="onliner-contact-cell">${formatOnlinerContactCell(v)}</td>
       <td data-label="Статус">${dmStatusRadios(v, 'onliner')}</td>
       <td data-label="Отправлено" class="onliner-sent-cell">${fmtDate(v.dm_sent_at)}</td>
+      <td data-label="Кто менял" class="onliner-changed-cell">${formatChangedBy(v)}</td>
       <td data-label="Заголовок">${esc(v.title)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
     </tr>
@@ -734,10 +758,10 @@ async function renderOnliner() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>${dateSortHeader('Дата', 'date')}</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Контакты</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Заголовок</th><th>Текст</th>
+          <th>ID</th><th>${dateSortHeader('Дата', 'date')}</th><th>Тема</th><th>Ссылка</th><th>Автор</th><th>Контакты</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Кто менял</th><th>Заголовок</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="12">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}
@@ -761,6 +785,7 @@ async function renderSeekers() {
       <td data-label="Кому пишем" class="seeker-contact-cell">${formatSeekerContactCell(v)}</td>
       <td data-label="Статус">${dmStatusRadios(v, 'seeker')}</td>
       <td data-label="Отправлено" class="seeker-sent-cell">${fmtDate(v.dm_sent_at)}</td>
+      <td data-label="Кто менял" class="seeker-changed-cell">${formatChangedBy(v)}</td>
       <td data-label="Сообщение" class="seeker-dm-cell">${formatDMMessageCell(v)}</td>
       <td data-label="Текст" class="body-cell">${esc(v.body)}</td>
     </tr>
@@ -771,10 +796,10 @@ async function renderSeekers() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>${dateSortHeader('Дата', 'date')}</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Сообщение</th><th>Текст</th>
+          <th>ID</th><th>${dateSortHeader('Дата', 'date')}</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Кто менял</th><th>Сообщение</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="11">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="12">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}
@@ -812,12 +837,14 @@ function bindDmStatus() {
           if (row) {
             const contactCell = row.querySelector(kind === 'onliner' ? '.onliner-contact-cell' : '.seeker-contact-cell');
             const sentCell = row.querySelector(kind === 'onliner' ? '.onliner-sent-cell' : '.seeker-sent-cell');
+            const changedCell = row.querySelector(kind === 'onliner' ? '.onliner-changed-cell' : '.seeker-changed-cell');
             if (contactCell) {
               contactCell.innerHTML = kind === 'onliner'
                 ? formatOnlinerContactCell(item)
                 : formatSeekerContactCell(item);
             }
             if (sentCell) sentCell.textContent = fmtDate(item.dm_sent_at);
+            if (changedCell) changedCell.innerHTML = formatChangedBy(item);
           }
         } catch (err) {
           const prevInput = group.querySelector(`input[value="${prev}"]`);

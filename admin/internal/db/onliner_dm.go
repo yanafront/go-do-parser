@@ -8,13 +8,14 @@ import (
 	"time"
 )
 
-func (db *DB) UpdateOnlinerDMStatus(ctx context.Context, id int64, status string) (*OnlinerPost, error) {
+func (db *DB) UpdateOnlinerDMStatus(ctx context.Context, id int64, status, changedBy string) (*OnlinerPost, error) {
 	status = strings.TrimSpace(strings.ToLower(status))
 	switch status {
 	case "sent", "pending":
 	default:
 		return nil, fmt.Errorf("invalid status")
 	}
+	changedBy = strings.TrimSpace(strings.TrimPrefix(changedBy, "@"))
 
 	p, err := db.getOnlinerPostByID(ctx, id)
 	if err != nil {
@@ -62,9 +63,9 @@ ON CONFLICT (source_channel, source_message_id) DO UPDATE SET
 	if status == "pending" {
 		_, err = db.sql.ExecContext(ctx, `
 UPDATE job_seeker_posts
-SET dm_contact = NULL, dm_contact_type = NULL, dm_sent_at = NULL
+SET dm_contact = NULL, dm_contact_type = NULL, dm_sent_at = NULL, dm_status_changed_by = $3
 WHERE source_channel = $1 AND source_message_id = $2
-`, sourceChannel, p.TopicID)
+`, sourceChannel, p.TopicID, nullIfEmpty(changedBy))
 		if err != nil {
 			return nil, err
 		}
@@ -79,9 +80,9 @@ WHERE source_channel = $1 AND source_message_id = $2
 	sentAt := time.Now().UTC()
 	_, err = db.sql.ExecContext(ctx, `
 UPDATE job_seeker_posts
-SET dm_contact = $1, dm_contact_type = $2, dm_sent_at = $3
-WHERE source_channel = $4 AND source_message_id = $5
-`, contact, contactType, sentAt, sourceChannel, p.TopicID)
+SET dm_contact = $1, dm_contact_type = $2, dm_sent_at = $3, dm_status_changed_by = $4
+WHERE source_channel = $5 AND source_message_id = $6
+`, contact, contactType, sentAt, nullIfEmpty(changedBy), sourceChannel, p.TopicID)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +95,7 @@ func (db *DB) getOnlinerPostByID(ctx context.Context, id int64) (*OnlinerPost, e
 SELECT o.id, o.topic_id, o.topic_url, o.title, o.body,
        o.poster_user_id, o.poster_username, o.poster_profile_url,
        o.phone, o.email, o.telegram, o.created_at, o.parsed_at, o.posted_at,
-       j.dm_contact, j.dm_contact_type, j.dm_sent_at
+       j.dm_contact, j.dm_contact_type, j.dm_sent_at, j.dm_status_changed_by
 FROM onliner_posts o
 LEFT JOIN job_seeker_posts j ON j.source_channel LIKE 'onliner:%' AND j.source_message_id = o.topic_id
 WHERE o.id = $1
@@ -102,7 +103,7 @@ WHERE o.id = $1
 		&p.ID, &p.TopicID, &p.TopicURL, &p.Title, &p.Body,
 		&p.PosterUserID, &p.PosterUsername, &p.PosterProfileURL,
 		&p.Phone, &p.Email, &p.Telegram, &p.CreatedAt, &p.ParsedAt, &p.PostedAt,
-		&p.DMContact, &p.DMContactType, &p.DMSentAt,
+		&p.DMContact, &p.DMContactType, &p.DMSentAt, &p.DMStatusChangedBy,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("not found")

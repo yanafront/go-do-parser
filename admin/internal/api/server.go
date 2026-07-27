@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"net/http"
 	"strconv"
@@ -15,6 +17,10 @@ import (
 
 //go:embed web/*
 var webFS embed.FS
+
+type ctxKey int
+
+const nicknameKey ctxKey = 1
 
 type Server struct {
 	db   *db.DB
@@ -60,17 +66,22 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Password string `json:"password"`
+		Nickname string `json:"nickname"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	token, err := s.auth.Login(strings.TrimSpace(req.Password))
+	token, nick, err := s.auth.Login(strings.TrimSpace(req.Password), req.Nickname)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid password")
+		if errors.Is(err, auth.ErrInvalidNickname) {
+			writeError(w, http.StatusBadRequest, "nickname required")
+			return
+		}
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"token": token})
+	writeJSON(w, http.StatusOK, map[string]string{"token": token, "nickname": nick})
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
@@ -204,7 +215,7 @@ func (s *Server) handleUpdateJobSeekerDM(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	item, err := s.db.UpdateJobSeekerDMStatus(r.Context(), id, req.Status)
+	item, err := s.db.UpdateJobSeekerDMStatus(r.Context(), id, req.Status, nicknameFrom(r))
 	if err != nil {
 		msg := err.Error()
 		if msg == "not found" {
@@ -234,7 +245,7 @@ func (s *Server) handleUpdateOnlinerDM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	item, err := s.db.UpdateOnlinerDMStatus(r.Context(), id, req.Status)
+	item, err := s.db.UpdateOnlinerDMStatus(r.Context(), id, req.Status, nicknameFrom(r))
 	if err != nil {
 		msg := err.Error()
 		if msg == "not found" {
@@ -258,12 +269,19 @@ func (s *Server) authRequired(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		if err := s.auth.Validate(token); err != nil {
+		claims, err := s.auth.Validate(token)
+		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), nicknameKey, claims.Nickname)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func nicknameFrom(r *http.Request) string {
+	v, _ := r.Context().Value(nicknameKey).(string)
+	return v
 }
 
 func bearerToken(r *http.Request) string {

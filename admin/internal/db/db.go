@@ -110,6 +110,7 @@ ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS poster_phone TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_claimed_by TEXT;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_claimed_at TIMESTAMPTZ;
 ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_message TEXT;
+ALTER TABLE job_seeker_posts ADD COLUMN IF NOT EXISTS dm_status_changed_by TEXT;
 
 CREATE TABLE IF NOT EXISTS seeker_agent_status (
     agent_id TEXT PRIMARY KEY,
