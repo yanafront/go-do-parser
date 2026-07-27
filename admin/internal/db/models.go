@@ -107,12 +107,12 @@ func (db *DB) ListVacancies(ctx context.Context, filter ListFilter, limit, offse
 	}
 
 	listQuery := fmt.Sprintf(`
-SELECT id, source_channel,
-       COALESCE((SELECT title FROM channels WHERE LOWER(username) = LOWER(vacancies.source_channel) LIMIT 1), ''),
-       source_message_id, source_message_link, dest_message_id, body,
-       ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at,
-       published_at, created_at
+SELECT vacancies.id, vacancies.source_channel, COALESCE(c.title, ''),
+       vacancies.source_message_id, vacancies.source_message_link, vacancies.dest_message_id, vacancies.body,
+       vacancies.ad_username, vacancies.ad_phone, vacancies.dm_contact, vacancies.dm_contact_type, vacancies.dm_sent_at,
+       vacancies.published_at, vacancies.created_at
 FROM vacancies
+LEFT JOIN channels c ON c.username = LOWER(vacancies.source_channel)
 %s
 %s
 LIMIT $%d OFFSET $%d
@@ -163,11 +163,13 @@ func (db *DB) ListJobSeekers(ctx context.Context, filter ListFilter, limit, offs
 	}
 
 	listQuery := fmt.Sprintf(`
-SELECT id, source_channel,
-       COALESCE((SELECT title FROM channels WHERE LOWER(username) = LOWER(job_seeker_posts.source_channel) LIMIT 1), ''),
-       source_message_id, source_message_link, body,
-       poster_username, poster_phone, ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, dm_message, dm_status_changed_by, created_at
+SELECT job_seeker_posts.id, job_seeker_posts.source_channel, COALESCE(c.title, ''),
+       job_seeker_posts.source_message_id, job_seeker_posts.source_message_link, job_seeker_posts.body,
+       job_seeker_posts.poster_username, job_seeker_posts.poster_phone, job_seeker_posts.ad_username, job_seeker_posts.ad_phone,
+       job_seeker_posts.dm_contact, job_seeker_posts.dm_contact_type, job_seeker_posts.dm_sent_at,
+       job_seeker_posts.dm_message, job_seeker_posts.dm_status_changed_by, job_seeker_posts.created_at
 FROM job_seeker_posts
+LEFT JOIN channels c ON c.username = LOWER(job_seeker_posts.source_channel)
 %s
 %s
 LIMIT $%d OFFSET $%d

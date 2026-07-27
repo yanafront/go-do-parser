@@ -560,8 +560,13 @@ async function loadChannels() {
   if (isOnlinerTab()) return;
   const type = channelType();
   if (state.channels[type].length > 0) return;
-  const data = await api(`/api/channels?type=${type}`);
-  state.channels[type] = data.channels || [];
+  try {
+    const data = await api(`/api/channels?type=${type}`);
+    state.channels[type] = data.channels || [];
+  } catch (err) {
+    if (err.message === 'unauthorized') throw err;
+    state.channels[type] = [];
+  }
 }
 
 async function renderApp() {

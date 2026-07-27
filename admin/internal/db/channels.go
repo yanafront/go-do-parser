@@ -21,11 +21,16 @@ func (db *DB) ListJobSeekerChannels(ctx context.Context) ([]Channel, error) {
 
 func (db *DB) listChannels(ctx context.Context, table string) ([]Channel, error) {
 	query := fmt.Sprintf(`
-SELECT DISTINCT t.source_channel, COALESCE(c.title, '')
-FROM %s t
-LEFT JOIN channels c ON LOWER(c.username) = LOWER(t.source_channel)
-WHERE t.source_channel <> '' AND t.source_channel NOT LIKE 'onliner:%%'
-ORDER BY COALESCE(NULLIF(c.title, ''), t.source_channel)
+SELECT source_channel, title
+FROM (
+    SELECT t.source_channel AS source_channel,
+           COALESCE(MAX(c.title), '') AS title
+    FROM %s t
+    LEFT JOIN channels c ON c.username = LOWER(t.source_channel)
+    WHERE t.source_channel <> '' AND t.source_channel NOT LIKE 'onliner:%%'
+    GROUP BY t.source_channel
+) x
+ORDER BY COALESCE(NULLIF(title, ''), source_channel)
 `, table)
 	rows, err := db.sql.QueryContext(ctx, query)
 	if err != nil {
