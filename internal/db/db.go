@@ -236,6 +236,12 @@ CREATE TABLE IF NOT EXISTS onliner_posts (
 );
 
 ALTER TABLE onliner_posts ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS channels (
+    username TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `)
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)

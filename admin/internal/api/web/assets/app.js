@@ -288,6 +288,30 @@ async function api(path, options = {}) {
   return data;
 }
 
+function formatChannelUsername(row) {
+  const username = String(row.source_channel || '').replace(/^@/, '');
+  return username ? `@${esc(username)}` : '—';
+}
+
+function formatChannelTitle(row) {
+  const title = row.source_channel_title ? String(row.source_channel_title).trim() : '';
+  return title ? esc(title) : '—';
+}
+
+function channelOptionLabel(ch) {
+  if (typeof ch === 'string') return `@${ch}`;
+  const username = String(ch.username || '').replace(/^@/, '');
+  const title = ch.title ? String(ch.title).trim() : '';
+  if (title && username) return `${title} (@${username})`;
+  if (title) return title;
+  return `@${username}`;
+}
+
+function channelOptionValue(ch) {
+  if (typeof ch === 'string') return ch;
+  return ch.username || '';
+}
+
 function formatChangedBy(row) {
   const nick = row.dm_status_changed_by ? String(row.dm_status_changed_by).trim() : '';
   if (!nick) return '—';
@@ -424,8 +448,9 @@ function filtersHTML() {
 
   const channels = state.channels[channelType()] || [];
   const channelOptions = channels.map((ch) => {
-    const selected = f.channel === ch ? 'selected' : '';
-    return `<option value="${attrEsc(ch)}" ${selected}>@${esc(ch)}</option>`;
+    const value = channelOptionValue(ch);
+    const selected = f.channel === value ? 'selected' : '';
+    return `<option value="${attrEsc(value)}" ${selected}>${esc(channelOptionLabel(ch))}</option>`;
   }).join('');
 
   return `
@@ -706,7 +731,8 @@ async function renderVacancies() {
   const rows = (data.items || []).map((v) => `
     <tr>
       <td data-label="ID">${v.id}</td>
-      <td data-label="Канал">@${esc(v.source_channel)}</td>
+      <td data-label="Название">${formatChannelTitle(v)}</td>
+      <td data-label="Канал">${formatChannelUsername(v)}</td>
       <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
       <td data-label="Контакт в объявлении">${formatContact(v.ad_username, v.ad_phone) || '—'}</td>
       <td data-label="Кому пишем">${formatMessageCell(v, 'vacancy')}</td>
@@ -721,10 +747,10 @@ async function renderVacancies() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>${dateSortHeader('Публикация', 'date')}</th><th>Текст</th>
+          <th>ID</th><th>Название</th><th>Канал</th><th>Ссылка</th><th>Контакт</th><th>Кому пишем</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>${dateSortHeader('Публикация', 'date')}</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="8">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="9">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}
@@ -778,7 +804,8 @@ async function renderSeekers() {
     <tr data-seeker-id="${v.id}">
       <td data-label="ID">${v.id}</td>
       <td data-label="Дата">${fmtDate(v.created_at)}</td>
-      <td data-label="Канал">@${esc(v.source_channel)}</td>
+      <td data-label="Название">${formatChannelTitle(v)}</td>
+      <td data-label="Канал">${formatChannelUsername(v)}</td>
       <td data-label="Ссылка" class="link-cell">${linkCell(v)}</td>
       <td data-label="Автор">${formatContact(v.poster_username, v.poster_phone) || '—'}</td>
       <td data-label="Контакт">${formatContact(v.ad_username, v.ad_phone) || '—'}</td>
@@ -796,10 +823,10 @@ async function renderSeekers() {
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>${dateSortHeader('Дата', 'date')}</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Кто менял</th><th>Сообщение</th><th>Текст</th>
+          <th>ID</th><th>${dateSortHeader('Дата', 'date')}</th><th>Название</th><th>Канал</th><th>Ссылка</th><th>Автор</th><th>Контакт</th><th>Кому пишем</th><th>Статус</th><th>${dateSortHeader('Отправлено', 'sent')}</th><th>Кто менял</th><th>Сообщение</th><th>Текст</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="12">Ничего не найдено</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="13">Ничего не найдено</td></tr>'}</tbody>
     </table>
     </div>
     ${pagerHTML(data)}

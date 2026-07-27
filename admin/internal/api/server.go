@@ -118,7 +118,7 @@ func (s *Server) handleSeekerAgents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
 	kind := strings.TrimSpace(r.URL.Query().Get("type"))
-	var channels []string
+	var channels []db.Channel
 	var err error
 	switch kind {
 	case "vacancies":
@@ -134,7 +134,7 @@ func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if channels == nil {
-		channels = []string{}
+		channels = []db.Channel{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"channels": channels})
 }

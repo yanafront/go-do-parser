@@ -7,37 +7,39 @@ import (
 )
 
 type Vacancy struct {
-	ID                int64      `json:"id"`
-	SourceChannel     string     `json:"source_channel"`
-	SourceMessageID   int        `json:"source_message_id"`
-	SourceMessageLink *string    `json:"source_message_link,omitempty"`
-	DestMessageID     *int       `json:"dest_message_id,omitempty"`
-	Body            string     `json:"body"`
-	AdUsername      *string    `json:"ad_username,omitempty"`
-	AdPhone         *string    `json:"ad_phone,omitempty"`
-	DMContact       *string    `json:"dm_contact,omitempty"`
-	DMContactType   *string    `json:"dm_contact_type,omitempty"`
-	DMSentAt        *time.Time `json:"dm_sent_at,omitempty"`
-	PublishedAt     time.Time  `json:"published_at"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID                 int64      `json:"id"`
+	SourceChannel      string     `json:"source_channel"`
+	SourceChannelTitle string     `json:"source_channel_title,omitempty"`
+	SourceMessageID    int        `json:"source_message_id"`
+	SourceMessageLink  *string    `json:"source_message_link,omitempty"`
+	DestMessageID      *int       `json:"dest_message_id,omitempty"`
+	Body               string     `json:"body"`
+	AdUsername         *string    `json:"ad_username,omitempty"`
+	AdPhone            *string    `json:"ad_phone,omitempty"`
+	DMContact          *string    `json:"dm_contact,omitempty"`
+	DMContactType      *string    `json:"dm_contact_type,omitempty"`
+	DMSentAt           *time.Time `json:"dm_sent_at,omitempty"`
+	PublishedAt        time.Time  `json:"published_at"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 type JobSeekerPost struct {
-	ID                int64      `json:"id"`
-	SourceChannel     string     `json:"source_channel"`
-	SourceMessageID   int        `json:"source_message_id"`
-	SourceMessageLink *string    `json:"source_message_link,omitempty"`
-	Body              string     `json:"body"`
-	PosterUsername    *string    `json:"poster_username,omitempty"`
-	PosterPhone       *string    `json:"poster_phone,omitempty"`
-	AdUsername        *string    `json:"ad_username,omitempty"`
-	AdPhone           *string    `json:"ad_phone,omitempty"`
-	DMContact         *string    `json:"dm_contact,omitempty"`
-	DMContactType     *string    `json:"dm_contact_type,omitempty"`
-	DMSentAt          *time.Time `json:"dm_sent_at,omitempty"`
-	DMMessage         *string    `json:"dm_message,omitempty"`
-	DMStatusChangedBy *string    `json:"dm_status_changed_by,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
+	ID                 int64      `json:"id"`
+	SourceChannel      string     `json:"source_channel"`
+	SourceChannelTitle string     `json:"source_channel_title,omitempty"`
+	SourceMessageID    int        `json:"source_message_id"`
+	SourceMessageLink  *string    `json:"source_message_link,omitempty"`
+	Body               string     `json:"body"`
+	PosterUsername     *string    `json:"poster_username,omitempty"`
+	PosterPhone        *string    `json:"poster_phone,omitempty"`
+	AdUsername         *string    `json:"ad_username,omitempty"`
+	AdPhone            *string    `json:"ad_phone,omitempty"`
+	DMContact          *string    `json:"dm_contact,omitempty"`
+	DMContactType      *string    `json:"dm_contact_type,omitempty"`
+	DMSentAt           *time.Time `json:"dm_sent_at,omitempty"`
+	DMMessage          *string    `json:"dm_message,omitempty"`
+	DMStatusChangedBy  *string    `json:"dm_status_changed_by,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 type Stats struct {
@@ -105,7 +107,9 @@ func (db *DB) ListVacancies(ctx context.Context, filter ListFilter, limit, offse
 	}
 
 	listQuery := fmt.Sprintf(`
-SELECT id, source_channel, source_message_id, source_message_link, dest_message_id, body,
+SELECT id, source_channel,
+       COALESCE((SELECT title FROM channels WHERE LOWER(username) = LOWER(vacancies.source_channel) LIMIT 1), ''),
+       source_message_id, source_message_link, dest_message_id, body,
        ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at,
        published_at, created_at
 FROM vacancies
@@ -124,7 +128,7 @@ LIMIT $%d OFFSET $%d
 	for rows.Next() {
 		var v Vacancy
 		if err := rows.Scan(
-			&v.ID, &v.SourceChannel, &v.SourceMessageID, &v.SourceMessageLink, &v.DestMessageID, &v.Body,
+			&v.ID, &v.SourceChannel, &v.SourceChannelTitle, &v.SourceMessageID, &v.SourceMessageLink, &v.DestMessageID, &v.Body,
 			&v.AdUsername, &v.AdPhone, &v.DMContact, &v.DMContactType, &v.DMSentAt,
 			&v.PublishedAt, &v.CreatedAt,
 		); err != nil {
@@ -159,7 +163,9 @@ func (db *DB) ListJobSeekers(ctx context.Context, filter ListFilter, limit, offs
 	}
 
 	listQuery := fmt.Sprintf(`
-SELECT id, source_channel, source_message_id, source_message_link, body,
+SELECT id, source_channel,
+       COALESCE((SELECT title FROM channels WHERE LOWER(username) = LOWER(job_seeker_posts.source_channel) LIMIT 1), ''),
+       source_message_id, source_message_link, body,
        poster_username, poster_phone, ad_username, ad_phone, dm_contact, dm_contact_type, dm_sent_at, dm_message, dm_status_changed_by, created_at
 FROM job_seeker_posts
 %s
@@ -177,7 +183,7 @@ LIMIT $%d OFFSET $%d
 	for rows.Next() {
 		var p JobSeekerPost
 		if err := rows.Scan(
-			&p.ID, &p.SourceChannel, &p.SourceMessageID, &p.SourceMessageLink, &p.Body,
+			&p.ID, &p.SourceChannel, &p.SourceChannelTitle, &p.SourceMessageID, &p.SourceMessageLink, &p.Body,
 			&p.PosterUsername, &p.PosterPhone, &p.AdUsername, &p.AdPhone, &p.DMContact, &p.DMContactType, &p.DMSentAt, &p.DMMessage, &p.DMStatusChangedBy, &p.CreatedAt,
 		); err != nil {
 			return nil, 0, err

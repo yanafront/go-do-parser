@@ -16,8 +16,9 @@ type Post struct {
 }
 
 type FetchResult struct {
-	Posts []Post
-	MaxID int
+	Posts        []Post
+	MaxID        int
+	ChannelTitle string
 }
 
 func PostBody(post Post) string {

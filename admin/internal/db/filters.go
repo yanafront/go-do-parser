@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"fmt"
 	"strings"
 )
@@ -128,38 +127,6 @@ func (f ListFilter) buildWhere(startArg int, searchCols []string, pendingSQL str
 		where = "WHERE " + strings.Join(parts, " AND ")
 	}
 	return where, args, n
-}
-
-func (db *DB) ListVacancyChannels(ctx context.Context) ([]string, error) {
-	return db.listChannels(ctx, "vacancies")
-}
-
-func (db *DB) ListJobSeekerChannels(ctx context.Context) ([]string, error) {
-	return db.listChannels(ctx, "job_seeker_posts")
-}
-
-func (db *DB) listChannels(ctx context.Context, table string) ([]string, error) {
-	query := fmt.Sprintf(`
-SELECT DISTINCT source_channel
-FROM %s
-WHERE source_channel <> ''
-ORDER BY source_channel
-`, table)
-	rows, err := db.sql.QueryContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []string
-	for rows.Next() {
-		var ch string
-		if err := rows.Scan(&ch); err != nil {
-			return nil, err
-		}
-		out = append(out, ch)
-	}
-	return out, rows.Err()
 }
 
 func normalizeSearch(s string) string {

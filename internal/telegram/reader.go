@@ -125,7 +125,7 @@ func (r *Reader) FetchNewPosts(ctx context.Context, channelUsername string, afte
 
 	messages := extractMessages(history)
 	users := extractUsers(history)
-	result := FetchResult{MaxID: afterID}
+	result := FetchResult{MaxID: afterID, ChannelTitle: strings.TrimSpace(channel.Title)}
 	posts := make([]Post, 0)
 
 	for _, msg := range messages {

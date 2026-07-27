@@ -314,6 +314,7 @@ func (a *App) syncChannel(ctx context.Context, source string) error {
 	if err != nil {
 		return err
 	}
+	a.saveChannelTitle(ctx, source, fetched.ChannelTitle)
 
 	a.log.Info(fmt.Sprintf("channel polled %s last_id=%d new_messages=%d posts=%d",
 		source, lastID, fetched.MaxID-lastID, len(fetched.Posts)),
@@ -639,6 +640,18 @@ func (a *App) dbReconnectLoop(ctx context.Context) {
 			}
 			a.tryConnectDB(a.log)
 		}
+	}
+}
+
+func (a *App) saveChannelTitle(ctx context.Context, source, title string) {
+	if a.db == nil || strings.TrimSpace(title) == "" {
+		return
+	}
+	if err := a.db.UpsertChannel(ctx, source, title); err != nil {
+		a.log.Warn("save channel title failed",
+			zap.String("channel", source),
+			zap.Error(err),
+		)
 	}
 }
 
